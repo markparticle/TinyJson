@@ -85,6 +85,10 @@ static void TestParseNumber() {
     TEST_PARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "+1");
     TEST_PARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, ".123");
     TEST_PARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "1.");
+    TEST_PARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "1.1.1");
+    TEST_PARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "1e1e1");
+    TEST_PARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "1e1.1");
+    TEST_PARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "1.1e1e2");
     TEST_PARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "INF");
     TEST_PARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "inf");
     TEST_PARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "NAN");
@@ -94,8 +98,8 @@ static void TestParseNumber() {
 
 
 int main() {
-    //TestParse();
-    //TestParseNumber();
+    TestParse();
+    TestParseNumber();
     TestParseNumberToBig();
     printf("%d/%d (%3.2f%%) passed!\n", testPass, testCount, 100.0 * testPass / testCount);
     return mainRet;
