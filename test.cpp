@@ -25,64 +25,25 @@ static int mainRet = 0;
 
 #define EXPECT_EQ_INT(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%d")
 
+#define TESTPARSE(react, valType, json)\
+    do {\
+        TinyValue val;\
+        val.type = TINY_FALSE;\
+        EXPECT_EQ_INT(react, TinyParse(&val, json));\
+        EXPECT_EQ_INT(valType, TinyGetType(&val));\
+    } while(0)
 
-static void TestParseNull() {
-    TinyValue val;
-    val.type = TINY_FALSE;
-    EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&val, "null"));
-    EXPECT_EQ_INT(TINY_NULL, TinyGetType(&val));
-}
-
-static void TestParseFalse() {
-    TinyValue val;
-    val.type = TINY_TRUE;
-    EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&val, "false"));
-    EXPECT_EQ_INT(TINY_FALSE, TinyGetType(&val));
-}
-
-static void TestParseTrue() {
-    TinyValue val;
-    val.type = TINY_FALSE;
-    EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&val, "true"));
-    EXPECT_EQ_INT(TINY_TRUE, TinyGetType(&val));
-}
-
-static void TestParseExpectValue() {
-    TinyValue val;
-    val.type = TINY_FALSE;
-    EXPECT_EQ_INT(TINY_PARSE_EXPECT_VALUE, TinyParse(&val, ""));
-    EXPECT_EQ_INT(TINY_NULL, TinyGetType(&val));
-
-    val.type = TINY_FALSE;
-    EXPECT_EQ_INT(TINY_PARSE_EXPECT_VALUE, TinyParse(&val, " "));
-    EXPECT_EQ_INT(TINY_NULL, TinyGetType(&val));
-}
-
-static void TestParseInvalidValue() {
-    TinyValue val;
-    val.type = TINY_FALSE;
-    EXPECT_EQ_INT(TINY_PARSE_INVALID_VALUE, TinyParse(&val, "nul"));
-    EXPECT_EQ_INT(TINY_NULL, TinyGetType(&val));
-    
-    val.type = TINY_FALSE;
-    EXPECT_EQ_INT(TINY_PARSE_INVALID_VALUE, TinyParse(&val, "?"));
-    EXPECT_EQ_INT(TINY_NULL, TinyGetType(&val));
-}
-
-static void TestParseRootNotSingular() {
-    TinyValue val;
-    val.type = TINY_FALSE;
-    EXPECT_EQ_INT(TINY_PARSE_ROOT_NOT_SINGULAR, TinyParse(&val, "null x"));
-    EXPECT_EQ_INT(TINY_NULL, TinyGetType(&val));
-}
 
 static void TestParse() {
-    TestParseNull();
-    TestParseFalse();
-    TestParseExpectValue();
-    TestParseInvalidValue();
-    TestParseRootNotSingular();
-    TestParseTrue();
+    TESTPARSE(TINY_PARSE_OK, TINY_NULL, "null");
+    TESTPARSE(TINY_PARSE_OK, TINY_FALSE, "false");
+    TESTPARSE(TINY_PARSE_OK, TINY_TRUE, "true");
+    TESTPARSE(TINY_PARSE_EXPECT_VALUE, TINY_NULL, "");
+    TESTPARSE(TINY_PARSE_EXPECT_VALUE, TINY_NULL, " ");
+    TESTPARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "nul");
+    TESTPARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "NULL");
+    TESTPARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "?");
+    TESTPARSE(TINY_PARSE_ROOT_NOT_SINGULAR, TINY_NULL, "null x");
 }
 
 int main() {
