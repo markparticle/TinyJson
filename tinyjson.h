@@ -18,6 +18,8 @@ enum TinyType {
 };
 
 struct TinyValue {
+    //type == TINY_NUMBER 
+    double num;
     TinyType type;
 };
 
@@ -29,11 +31,14 @@ enum TinyParseReact{
     TINY_PARSE_OK = 0,
     TINY_PARSE_EXPECT_VALUE,
     TINY_PARSE_INVALID_VALUE,
-    TINY_PARSE_ROOT_NOT_SINGULAR
+    TINY_PARSE_ROOT_NOT_SINGULAR,
+    TINY_PARSE_NUMBER_TOO_BIG
 };
 
 int TinyParse(TinyValue *v, const char* json);
 
 TinyType TinyGetType(const TinyValue* val);
+double TinyGetNumber(const TinyValue* val);
+
 
 #endif // TINYJSON_H
