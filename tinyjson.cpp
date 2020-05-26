@@ -56,7 +56,7 @@ static int TinyParseNumber(TinyContext* context, TinyValue* val) {
         if(!isDigit(*p)) return TINY_PARSE_INVALID_VALUE;
         for(p++; isDigit(*p); p++);
     }
-    if(*p == 'e' || *p == 'E' || *p == '.') return TINY_PARSE_INVALID_VALUE;
+    if(*p == 'e' || *p == 'E' || *p == '.' || isDigit1To9(*p)) return TINY_PARSE_INVALID_VALUE;
     val->num = strtod(context->json, NULL);
     //溢出的时候 errno = ERANGE  
     errno = 0;
