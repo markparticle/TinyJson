@@ -25,6 +25,10 @@ static int mainRet = 0;
 
 #define EXPECT_EQ_INT(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%d")
 #define EXPECT_EQ_DOUBLE(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%.17lf")
+#define EXPECT_EQ_SINGLE(expect, actual, aLength) \
+    EXPECT_EQ_BASE(sizeof(expect) - 1 == aLength && \
+    memcmp(expect, actual, aLength) == 0, expect, actual, "%s")
+
 
 #define TEST_PARSE(react, valType, json)\
     do {\
@@ -109,10 +113,21 @@ static void TestParseNumber() {
 }
 
 
+static void TestAccessString() {
+    TinyValue value;
+    TinyInitValue(&value);
+    TinySetString(&value, "", 0);
+    EXPECT_EQ_SINGLE("", TinyGetString(&value), TinyGetStringLength(&value));
+    TinySetString(&value, "Hello", 5);
+    EXPECT_EQ_SINGLE("Hello", TinyGetString(&value), TinyGetStringLength(&value));
+    TinyFree(&value);
+}
+
 int main() {
     TestParse();
     TestParseNumber();
     TestParseNumberToBig();
+    TestAccessString();
     printf("%d/%d (%3.2f%%) passed!\n", testPass, testCount, 100.0 * testPass / testCount);
     return mainRet;
 }
