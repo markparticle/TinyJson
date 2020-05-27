@@ -105,7 +105,8 @@ static void TinyPutC(TinyContext* context, const char ch) {
 }
 
 static int TinyParseString(TinyContext* context, TinyValue* value) {
-    size_t head = context->top, len;
+    size_t head = context->top;
+    size_t len;
     const char* p;
 
     assert(*context->json == '\"');
@@ -129,8 +130,31 @@ static int TinyParseString(TinyContext* context, TinyValue* value) {
                 context->top = head;
                 return TINY_PARSE_MISS_QUOTATION_MARK;
             }
+            case '\\':
+                switch(*p++) {
+                    case '\"': { TinyPutC(context, '\"'); break; }
+                    case '\\': { TinyPutC(context, '\\'); break; }
+                    case '/': { TinyPutC(context, '/'); break; }
+                    case 'b': { TinyPutC(context, '\b'); break; }
+                    case 'f': { TinyPutC(context, '\f'); break; }
+                    case 'n': { TinyPutC(context, '\n'); break; }
+                    case 'r': { TinyPutC(context, '\r'); break; }
+                    case 't': { TinyPutC(context, '\t'); break; }
+                    default:
+                    {
+                        context->top = head;
+                        return TINY_PARSE_INVALID_STRING_ESCAPE;
+                    }
+                }
             default:
+            {
+                //不合法的字符是 %x00 至 %x1F
+                if((unsigned char)ch < 0x20) {
+                    context->top = head;
+                    return TINY_PARSE_INVALID_STRING_CHAR;
+                }
                 TinyPutC(context, ch);
+            }
         }
     }
 }
