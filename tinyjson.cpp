@@ -117,7 +117,7 @@ static int TinyParseString(TinyContext* context, TinyValue* value) {
         switch (ch) {
             case '\"':
             {
-                //结束
+                //字符串结束
                 len = context->top - head;
                 const char* str = (const char*)TinyContextPop(context, len);
                 TinySetString(value, str, len);
@@ -168,7 +168,7 @@ int TinyParse(TinyValue *value, const char* json) {
         }
     }
     assert(context.top == 0);
-    delete context.strStack;
+    free(context.strStack);
     return ret;
 }
 
@@ -187,19 +187,19 @@ double TinyGetNumber(const TinyValue* value) {
 }
 
 void TinySetNumber(TinyValue* value, double num) {
-    assert(value != NULL);
+    TinyFree(value);
     value->num = num;
     value->type = TINY_NUMBER;
 }
 
 bool TinyGetBoolean(const TinyValue* value) {
     assert(value != NULL && (value->type == TINY_TRUE || value->type == TINY_FALSE));
-    return value->type;
+    return value->type == TINY_TRUE;
 }
 
 void TinySetBoolen(TinyValue* value, bool flag) {
-    assert(value != NULL);
-    if(flag == true) value->type = TINY_TRUE;
+    TinyFree(value);
+    if(flag) value->type = TINY_TRUE;
     else value->type = TINY_FALSE;
 }
 
@@ -229,7 +229,7 @@ void TinyInitValue(TinyValue *value) {
 void TinyFree(TinyValue *value) {
     assert(value != NULL);
     if(value->type == TINY_STRING) {
-        delete value->str;
+        delete[] value->str;
     }
     value->type = TINY_NULL;
 }
