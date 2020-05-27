@@ -8,6 +8,8 @@
 #define TINYJSON_H
 #include <stdlib.h>
 
+const size_t TINY_STACK_SIZE = 256;
+
 enum TinyType {
     TINY_NULL,
     TINY_FALSE,
@@ -31,6 +33,8 @@ struct TinyValue {
 
 struct TinyContext {
     const char* json;
+    char * strStack;
+    size_t size, top;
 };
 
 enum TinyParseReact{
@@ -38,7 +42,8 @@ enum TinyParseReact{
     TINY_PARSE_EXPECT_VALUE,
     TINY_PARSE_INVALID_VALUE,
     TINY_PARSE_ROOT_NOT_SINGULAR,
-    TINY_PARSE_NUMBER_TOO_BIG
+    TINY_PARSE_NUMBER_TOO_BIG,
+    TINY_PARSE_MISS_QUOTATION_MARK,
 };
 
 void TinyFree(TinyValue *value);

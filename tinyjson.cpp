@@ -39,6 +39,7 @@ static bool isDigit(const char t) {
 
 static int TinyParseNumber(TinyContext* context, TinyValue* value) {
     const char* p = context->json;
+
     if(*p == '-') p++;
     if(*p == '0') p++;
     else {
@@ -56,7 +57,7 @@ static int TinyParseNumber(TinyContext* context, TinyValue* value) {
         if(!isDigit(*p)) return TINY_PARSE_INVALID_VALUE;
         for(p++; isDigit(*p); p++);
     }
-    if(*p == 'e' || *p == 'E' || *p == '.' || isDigit1To9(*p)) return TINY_PARSE_INVALID_VALUE;
+    if (*p == 'e' || *p == 'E' || *p == '.' || isDigit1To9(*p)) return TINY_PARSE_INVALID_VALUE;
     value->num = strtod(context->json, NULL);
     //溢出的时候 errno = ERANGE  
     errno = 0;
@@ -69,32 +70,105 @@ static int TinyParseNumber(TinyContext* context, TinyValue* value) {
     return TINY_PARSE_OK;
 }
 
+static void* TinyContextPush(TinyContext* context, size_t size) {
+    void* ret;
+    assert(size > 0);
+    //开辟新空间
+    if(context->top + size  >= context->size) {
+        //初始化
+        if(context->size == 0) {
+            context->size = TINY_STACK_SIZE;
+        }
+        //如果超过缓冲空间，增大size
+        while(context->top + size  >= context->size) {
+            context->size += context->size >> 1; /* context->size * 1.5 */
+        }
+        //分配空间
+        context->strStack = (char*)realloc(context->strStack, context->size);
+    }
+    //返回原top起点
+    ret = context->strStack + context->top;
+    context->top += size;
+    return ret;
+}
+
+static void* TinyContextPop(TinyContext* context, size_t size) {
+    assert(context->top >= size);
+    context->top -= size;
+    return context->strStack + context->top;
+}
+
+static void TinyPutC(TinyContext* context, const char ch) {
+    char* top = (char*)TinyContextPush(context, sizeof(char));
+    // 写入stack
+    *top = ch;
+}
+
+static int TinyParseString(TinyContext* context, TinyValue* value) {
+    size_t head = context->top, len;
+    const char* p;
+
+    assert(*context->json == '\"');
+    context->json++;
+    
+    p = context->json;
+    while(true) {
+        char ch = *p++;
+        switch (ch) {
+            case '\"':
+            {
+                //结束
+                len = context->top - head;
+                const char* str = (const char*)TinyContextPop(context, len);
+                TinySetString(value, str, len);
+                context->json = p;
+                return TINY_PARSE_OK;
+            }
+            case '\0':
+            {
+                context->top = head;
+                return TINY_PARSE_MISS_QUOTATION_MARK;
+            }
+            default:
+                TinyPutC(context, ch);
+        }
+    }
+}
+
 static int TinyParseValue(TinyContext* context, TinyValue* value) {
     switch(*context->json) {
         case 'n': return TinyParseLiteral(context, value, "null", TINY_NULL);
         case 't': return TinyParseLiteral(context, value, "true", TINY_TRUE);
         case 'f': return TinyParseLiteral(context, value, "false", TINY_FALSE);
         default: return TinyParseNumber(context, value);
+        case '\"': return TinyParseString(context, value);
         case '\0': return TINY_PARSE_EXPECT_VALUE;
     }
 }
 
 int TinyParse(TinyValue *value, const char* json) {
+    assert(value != NULL);
     TinyContext context;
     int ret;
 
-    assert(value != NULL);
+    TinyInitValue(value);
+    //初始化context
     context.json = json;
-    value->type = TINY_NULL;
+    context.strStack = NULL;
+    context.size = context.top = 0;
+
     TinyParseWhiteSpace(&context);
     ret = TinyParseValue(&context, value);
 
     if(ret == TINY_PARSE_OK) {
         TinyParseWhiteSpace(&context);
         if(*context.json != '\0') {
+            value->type = TINY_NULL;
             ret = TINY_PARSE_ROOT_NOT_SINGULAR;
         }
     }
+    assert(context.top == 0);
+    delete context.strStack;
     return ret;
 }
 
