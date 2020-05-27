@@ -24,7 +24,7 @@ static int mainRet = 0;
     } while(0)
 
 #define EXPECT_EQ_INT(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%d")
-#define EXPECT_EQ_DOUBLE(expect, actual) EXPECT_EQ_BASE(expect - actual < 1e9, expect, actual, "%d")
+#define EXPECT_EQ_DOUBLE(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%.17lf")
 
 #define TEST_PARSE(react, valType, json)\
     do {\
@@ -38,7 +38,7 @@ static int mainRet = 0;
         TinyValue val;\
         EXPECT_EQ_INT(react, TinyParse(&val, json));\
         EXPECT_EQ_INT(TINY_NUMBER, TinyGetType(&val));\
-        EXPECT_EQ_DOUBLE(TINY_NUMBER, TinyGetType(&val));\
+        EXPECT_EQ_DOUBLE(expect, TinyGetNumber(&val));\
     } while(0)
 
 static void TestParse() {
@@ -79,6 +79,17 @@ static void TestParseNumber() {
     TEST_PARSE_NUMBER(TINY_PARSE_OK, -3.1544e-10, "-3.1544e-10");
     TEST_PARSE_NUMBER(TINY_PARSE_OK, 3.1544e-10, "3.1544e-10");
     TEST_PARSE_NUMBER(TINY_PARSE_OK, 0.0, "1e-100000");
+
+    //the smallest number > 1
+    TEST_PARSE_NUMBER(TINY_PARSE_OK, 1.0000000000000002, "1.0000000000000002");
+    TEST_PARSE_NUMBER(TINY_PARSE_OK, 4.9406564584124654e-324, "4.9406564584124654e-324");
+    TEST_PARSE_NUMBER(TINY_PARSE_OK, -4.9406564584124654e-324, "-4.9406564584124654e-324");
+    TEST_PARSE_NUMBER(TINY_PARSE_OK, 2.2250738585072009e-308, "2.2250738585072009e-308");
+    TEST_PARSE_NUMBER(TINY_PARSE_OK, -2.2250738585072009e-308, "-2.2250738585072009e-308");
+    TEST_PARSE_NUMBER(TINY_PARSE_OK, 2.2250738585072014e-308, "2.2250738585072014e-308");
+    TEST_PARSE_NUMBER(TINY_PARSE_OK, -2.2250738585072014e-308, "-2.2250738585072014e-308");
+    TEST_PARSE_NUMBER(TINY_PARSE_OK, 1.7976931348623157e+308, "1.7976931348623157e+308");
+    TEST_PARSE_NUMBER(TINY_PARSE_OK, -1.7976931348623157e+308, "-1.7976931348623157e+308");
 
 #if 1
     TEST_PARSE(TINY_PARSE_INVALID_VALUE, TINY_NULL, "+0");
