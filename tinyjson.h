@@ -42,10 +42,15 @@ enum TinyParseReact{
     TINY_PARSE_EXPECT_VALUE,
     TINY_PARSE_INVALID_VALUE,
     TINY_PARSE_ROOT_NOT_SINGULAR,
+
     TINY_PARSE_NUMBER_TOO_BIG,
-    TINY_PARSE_MISS_QUOTATION_MARK,
-    TINY_PARSE_INVALID_STRING_CHAR,
-    TINY_PARSE_INVALID_STRING_ESCAPE,
+
+    TINY_PARSE_MISS_QUOTATION_MARK,       //缺少”
+    TINY_PARSE_INVALID_STRING_CHAR,       //非法字符
+    TINY_PARSE_INVALID_STRING_ESCAPE,     //非法的转码符
+
+    TINY_PARSE_INVALID_UNICODE_HEX,       //不符合4位十六进制数字
+    TINY_PARSE_INVALID_UNICODE_SURROGATE, //范围不正确 U+0000 ~ U+10FFFF
 };
 
 void TinyFree(TinyValue *value);
@@ -64,7 +69,5 @@ void TinySetNull(TinyValue* value);
 void TinySetBoolen(TinyValue* value, bool flag);
 void TinySetNumber(TinyValue* value, double num);
 void TinySetString(TinyValue* value, const char* str, size_t len);
-
-
 
 #endif // TINYJSON_H

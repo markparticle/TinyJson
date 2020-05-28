@@ -104,11 +104,66 @@ static void TinyPutC(TinyContext* context, const char ch) {
     *top = ch;
 }
 
+//读取4位六进制
+static const char* TinyParseHex4(const char* str, unsigned* u) {
+    int i;
+    *u = 0;
+    for(i = 0; i < 4; i++) {
+        char ch = *str++;
+        //u左移4位
+        //16进制数占4位二进制
+        *u <<= 4;
+        if     (ch >= '0' && ch <= '9')  *u |= ch - '0';
+        else if(ch >= 'A' && ch <= 'F')  *u |= ch - ('A' - 10);
+        else if(ch >= 'a' && ch <= 'f')  *u |= ch - ('a' - 10);
+        else return NULL;
+    }
+    return str;
+}
+
+static void TinyEncodeUtf8(TinyContext* context, unsigned u) {
+    assert(u >= 0x0000 && u <= 0x10FFFF);
+    // 1, 2, 3, 4字节数
+    // 0xff : 1111 1111  避免一些编译器的警告误判
+
+    /* 编码规则
+    ** 0000 0000-0000 007F | 0xxxxxxx
+    ** 0000 0080-0000 07FF | 110xxxxx 10xxxxxx
+    ** 0000 0800-0000 FFFF | 1110xxxx 10xxxxxx 10xxxxxx
+    ** 0001 0000-0010 FFFF | 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+    */
+    if(u <= 0x7f) {
+        TinyPutC(context, u & 0xff);
+    }
+    else if(u <= 0x7ff) {
+        // 0xc0 : 1100 0000
+        TinyPutC(context, 0xc0 | ((u >> 6) & 0xff));
+        // 0x80 : 1000 0000
+        TinyPutC(context, 0x80 | (u         & 0x3f));
+    }
+    else if(u <= 0xffff) {
+        //oxffff : 1111 1111 1111 1111 
+        TinyPutC(context, 0xE0 | ((u >> 12) & 0xFF));
+        TinyPutC(context, 0x80 | ((u >>  6) & 0x3F));
+        TinyPutC(context, 0x80 | ( u        & 0x3F));
+    }
+    else if(u <= 0x10fffff) {
+       //Unicode的最大码位为0x10FFFF       
+        TinyPutC(context, 0xF0 | ((u >> 18) & 0xFF));
+        TinyPutC(context, 0x80 | ((u >> 12) & 0x3F));
+        TinyPutC(context, 0x80 | ((u >>  6) & 0x3F));
+        TinyPutC(context, 0x80 | ( u        & 0x3F));
+    }
+}
+
+#define STRING_ERROR(ret) do { context->top = head; return ret; } while(0)
+
 static int TinyParseString(TinyContext* context, TinyValue* value) {
     size_t head = context->top;
     size_t len;
     const char* p;
-
+    unsigned u, u2;
+    
     assert(*context->json == '\"');
     context->json++;
     
@@ -125,11 +180,6 @@ static int TinyParseString(TinyContext* context, TinyValue* value) {
                 context->json = p;
                 return TINY_PARSE_OK;
             }
-            case '\0':
-            {
-                context->top = head;
-                return TINY_PARSE_MISS_QUOTATION_MARK;
-            }
             case '\\':
                 switch(*p++) {
                     case '\"': { TinyPutC(context, '\"'); break; }
@@ -140,18 +190,48 @@ static int TinyParseString(TinyContext* context, TinyValue* value) {
                     case 'n': { TinyPutC(context, '\n'); break; }
                     case 'r': { TinyPutC(context, '\r'); break; }
                     case 't': { TinyPutC(context, '\t'); break; }
+                    case 'u': {
+                        //codepoint = 0x10000 + (H − 0xD800) × 0x400 + (L − 0xDC00)
+                        p = TinyParseHex4(p, &u);
+                        if(p == NULL) {
+                            STRING_ERROR(TINY_PARSE_INVALID_UNICODE_HEX);
+                        }
+                        if(u >= 0xD800 && u <= 0xDBFF) {
+                            if(*p++ != '\\') { 
+                                STRING_ERROR(TINY_PARSE_INVALID_UNICODE_SURROGATE); 
+                            }
+                            if(*p++ != 'u') { 
+                                STRING_ERROR(TINY_PARSE_INVALID_UNICODE_SURROGATE); 
+                            }
+                            //高代理项
+                            p = TinyParseHex4(p, &u2);
+                            if(p == NULL) {
+                                STRING_ERROR(TINY_PARSE_INVALID_UNICODE_SURROGATE);
+                            }
+                            if(u2 < 0xDC00 || u2 > 0xDFFF) {
+                                STRING_ERROR(TINY_PARSE_INVALID_UNICODE_SURROGATE);
+                            }
+                            u = (((u - 0xD800) << 10) || (u2 - 0xDC00)) + 0x10000;
+                        }
+                        TinyEncodeUtf8(context, u);
+                        break;
+                    }
                     default:
                     {
-                        context->top = head;
-                        return TINY_PARSE_INVALID_STRING_ESCAPE;
+                        STRING_ERROR(TINY_PARSE_INVALID_STRING_ESCAPE);
                     }
                 }
+                break;
+            case '\0':
+            {
+                STRING_ERROR(TINY_PARSE_MISS_QUOTATION_MARK); 
+            }
             default:
             {
-                //不合法的字符是 %x00 至 %x1F
+                //非转义（unescaped）的字符，（0 ~ 31 是不合法的编码单元）
+                //不合法字符 %x00 至 %x1F
                 if((unsigned char)ch < 0x20) {
-                    context->top = head;
-                    return TINY_PARSE_INVALID_STRING_CHAR;
+                    STRING_ERROR(TINY_PARSE_INVALID_STRING_CHAR);
                 }
                 TinyPutC(context, ch);
             }
@@ -165,7 +245,7 @@ static int TinyParseValue(TinyContext* context, TinyValue* value) {
         case 't': return TinyParseLiteral(context, value, "true", TINY_TRUE);
         case 'f': return TinyParseLiteral(context, value, "false", TINY_FALSE);
         default: return TinyParseNumber(context, value);
-        case '\"': return TinyParseString(context, value);
+        case '"': return TinyParseString(context, value);
         case '\0': return TINY_PARSE_EXPECT_VALUE;
     }
 }
