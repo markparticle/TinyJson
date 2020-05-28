@@ -123,28 +123,34 @@ static const char* TinyParseHex4(const char* str, unsigned* u) {
 
 static void TinyEncodeUtf8(TinyContext* context, unsigned u) {
     assert(u >= 0x0000 && u <= 0x10FFFF);
-    // 1, 2, 3, 4字节数
     // 0xff : 1111 1111  避免一些编译器的警告误判
 
+    // 变长编码
     /* 编码规则
     ** 0000 0000-0000 007F | 0xxxxxxx
     ** 0000 0080-0000 07FF | 110xxxxx 10xxxxxx
+                             0xC0
     ** 0000 0800-0000 FFFF | 1110xxxx 10xxxxxx 10xxxxxx
+                             0xE0     0x80     0x80 
     ** 0001 0000-0010 FFFF | 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-    */
+    **                       0xF0
+    */                       
     if(u <= 0x7f) {
+        //最高位为0
         TinyPutC(context, u & 0xff);
     }
     else if(u <= 0x7ff) {
-        // 0xc0 : 1100 0000
+        //最高位为1100
         TinyPutC(context, 0xc0 | ((u >> 6) & 0xff));
-        // 0x80 : 1000 0000
-        TinyPutC(context, 0x80 | (u         & 0x3f));
+        TinyPutC(context, 0x80 | (u         & 0x3f));  
     }
     else if(u <= 0xffff) {
-        //oxffff : 1111 1111 1111 1111 
-        TinyPutC(context, 0xE0 | ((u >> 12) & 0xFF));
-        TinyPutC(context, 0x80 | ((u >>  6) & 0x3F));
+        //最高位为1110
+        // 填入第一部分 左移12位 
+        TinyPutC(context, 0xE0 | ((u >> 12) & 0xFF)); 
+        // 填入第二部分 左移6位
+        TinyPutC(context, 0x80 | ((u >>  6) & 0x3F)); 
+        // 填入第三部分 
         TinyPutC(context, 0x80 | ( u        & 0x3F));
     }
     else if(u <= 0x10fffff) {
@@ -191,12 +197,14 @@ static int TinyParseString(TinyContext* context, TinyValue* value) {
                     case 'r': { TinyPutC(context, '\r'); break; }
                     case 't': { TinyPutC(context, '\t'); break; }
                     case 'u': {
-                        //codepoint = 0x10000 + (H − 0xD800) × 0x400 + (L − 0xDC00)
                         p = TinyParseHex4(p, &u);
                         if(p == NULL) {
                             STRING_ERROR(TINY_PARSE_INVALID_UNICODE_HEX);
                         }
+                        // surrogate pair \uXXXX\uYYYY 
+                        // 扩展字符而使用的编码方式 (两个UTF-16编码)来表示一个字符
                         if(u >= 0xD800 && u <= 0xDBFF) {
+                            // 第一个码点是 U+D800 至 U+DBFF 正确的的高代理项
                             if(*p++ != '\\') { 
                                 STRING_ERROR(TINY_PARSE_INVALID_UNICODE_SURROGATE); 
                             }
@@ -208,10 +216,15 @@ static int TinyParseString(TinyContext* context, TinyValue* value) {
                             if(p == NULL) {
                                 STRING_ERROR(TINY_PARSE_INVALID_UNICODE_SURROGATE);
                             }
+                            //第二个码 U+DC00 至 U+DFFF 的低代理项（low surrogate）
                             if(u2 < 0xDC00 || u2 > 0xDFFF) {
                                 STRING_ERROR(TINY_PARSE_INVALID_UNICODE_SURROGATE);
                             }
-                            u = (((u - 0xD800) << 10) || (u2 - 0xDC00)) + 0x10000;
+                            //  ‭0001 0000 0000 0000 0000‬  0x10000
+                            //  ‭     1101 1000 0000 0000  0xD8
+                            //       ‭1101 1100 0000 0000‬  0xDc
+                            //codepoint = 0x10000 + (H − 0xD800) × 0x400 + (L − 0xDC00)
+                            u = (((u - 0xD800) << 10) | (u2 - 0xDC00)) + 0x10000;
                         }
                         TinyEncodeUtf8(context, u);
                         break;
