@@ -7,6 +7,7 @@
 #ifndef TINYJSON_H
 #define TINYJSON_H
 #include <stdlib.h>
+#include <unordered_map>
 
 const size_t TINY_STACK_SIZE = 256;
 
@@ -20,8 +21,14 @@ enum TinyType {
     TINY_OBJECT,
 };
 
+typedef struct TinyValue TinyValue; 
+typedef struct TinyMember TinyMember; 
 struct TinyValue {
     union {
+        struct {
+            TinyMember* member;
+            size_t msize;
+        };
         struct {
             char *str;
             size_t len;
@@ -33,6 +40,12 @@ struct TinyValue {
         double num;
     };
     TinyType type;
+};
+
+struct TinyMember {
+    char* key;
+    size_t kLen;
+    TinyValue value;
 };
 
 struct TinyContext {
@@ -57,6 +70,10 @@ enum TinyParseReact{
     TINY_PARSE_INVALID_UNICODE_SURROGATE, //范围不正确 U+0000 ~ U+10FFFF
 
     TINY_PARSE_MISS_COMMA_OR_SQUARE_BRACKET,
+
+    TINY_PARSE_MISS_KEY,
+    TINY_PARSE_MISS_COLON,
+    TINY_PARSE_MISS_COMMA_OR_CURLY_BRACKET,
 };
 
 void TinyFree(TinyValue *value);

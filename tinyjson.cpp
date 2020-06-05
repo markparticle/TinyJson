@@ -11,6 +11,9 @@
 #include <errno.h>     /* errno, ERANGE */
 #include <math.h>      /* HUGE_VAL */
 #include <cstring>      /* memcpy() */
+
+static int TinyParseValue(TinyContext* context, TinyValue* value);
+
 //解析空白
 static void TinyParseWhiteSpace(TinyContext* context) {
     const char *p = context->json;
@@ -124,7 +127,6 @@ static const char* TinyParseHex4(const char* str, unsigned* u) {
 static void TinyEncodeUtf8(TinyContext* context, unsigned u) {
     assert(u >= 0x0000 && u <= 0x10FFFF);
     // 0xff : 1111 1111  避免一些编译器的警告误判
-
     // 变长编码
     /* 编码规则
     ** 0000 0000-0000 007F | 0xxxxxxx
@@ -164,9 +166,8 @@ static void TinyEncodeUtf8(TinyContext* context, unsigned u) {
 
 #define STRING_ERROR(ret) do { context->top = head; return ret; } while(0)
 
-static int TinyParseString(TinyContext* context, TinyValue* value) {
+static int TinyParseStringRaw(TinyContext* context, char** str, size_t* len) {
     size_t head = context->top;
-    size_t len;
     const char* p;
     unsigned u, u2;
     
@@ -180,9 +181,8 @@ static int TinyParseString(TinyContext* context, TinyValue* value) {
             case '\"':
             {
                 //字符串结束
-                len = context->top - head;
-                const char* str = (const char*)TinyContextPop(context, len);
-                TinySetString(value, str, len);
+                *len = context->top - head;
+                *str = (char*)TinyContextPop(context, *len);
                 context->json = p;
                 return TINY_PARSE_OK;
             }
@@ -253,7 +253,16 @@ static int TinyParseString(TinyContext* context, TinyValue* value) {
     }
 }
 
-static int TinyParseValue(TinyContext* context, TinyValue* value);
+static int TinyParseString(TinyContext* context, TinyValue* value) {
+    int ret;
+    char* str;
+    size_t len;
+    ret = TinyParseStringRaw(context, &str, &len);
+    if(ret == TINY_PARSE_OK) {
+        TinySetString(value, str, len);
+    }
+    return ret;
+}
 
 static int TinyParseArray(TinyContext* context, TinyValue* value) {
     size_t size = 0;
@@ -305,6 +314,80 @@ static int TinyParseArray(TinyContext* context, TinyValue* value) {
     return ret;
 }
 
+static int TinyParseObject(TinyContext* context, TinyValue* value) {
+    size_t size;
+    TinyMember m;
+    int ret;
+    assert(*context->json == '{');
+    context->json++;
+    TinyParseWhiteSpace(context);
+    if(*context->json == '}') {
+        context->json++;
+        value->type = TINY_OBJECT;
+        value->member = 0;
+        value->msize = 0;
+        return TINY_PARSE_OK;
+    }
+    while(true) {
+        char * str;
+        TinyInitValue(&m.value);
+        // 1. parse key
+        if(*context->json != '"') {
+            ret = TINY_PARSE_MISS_KEY;
+            break;
+        }
+        ret = TinyParseStringRaw(context, &str, &m.kLen);
+        if(ret != TINY_PARSE_OK) {
+            break;
+        }
+        m.key = (char*)malloc(m.kLen + 1);
+        memcpy(m.key, str, m.kLen);
+        m.key[m.kLen] = '\0';
+        // 2. parse colon
+        if(*context->json != ':') {
+            ret = TINY_PARSE_MISS_COLON;
+            break;
+        }
+        context->json++;
+        TinyParseWhiteSpace(context);
+        // 3. parse value
+        ret = TinyParseValue(context, &m.value);
+        if(ret != TINY_PARSE_OK) {
+            break;
+        }
+        // 写入缓冲区
+        memcpy(TinyContextPush(context, sizeof(TinyValue)), &m, sizeof(TinyMember));
+        size++;
+        m.key = NULL;
+        // 4. parse  comma / right-curly-brace
+        TinyParseWhiteSpace(context);
+        if(*context->json == ',') {
+            context->json++;
+            TinyParseWhiteSpace(context);
+        }
+        else if (*context->json == '}') {
+            size_t msize = sizeof(TinyMember) * size;
+            context->json++;
+            value->type = TINY_OBJECT;
+            value->msize = size;
+            value->member = (TinyMember*)malloc(msize);
+            memcpy(value->member, TinyContextPop(context, msize), msize);
+            return TINY_PARSE_OK;
+        } else {
+            ret = TINY_PARSE_MISS_COMMA_OR_CURLY_BRACKET;
+            break;
+        }
+    }
+    free(m.key);
+    for(size_t i = 0; i < size; i++) {
+        TinyMember* m = (TinyMember*) TinyContextPop(context, sizeof(TinyMember));
+        free(m->key);
+        TinyFree(&m->value);
+    }
+    value->type = TINY_NULL;
+    return ret;
+}
+
 static int TinyParseValue(TinyContext* context, TinyValue* value) {
     switch(*context->json) {
         case 'n': return TinyParseLiteral(context, value, "null", TINY_NULL);
@@ -313,6 +396,7 @@ static int TinyParseValue(TinyContext* context, TinyValue* value) {
         default: return TinyParseNumber(context, value);
         case '"': return TinyParseString(context, value);
         case '[': return TinyParseArray(context, value);
+        case '{': return TinyParseObject(context, value);
         case '\0': return TINY_PARSE_EXPECT_VALUE;
     }
 }
@@ -386,7 +470,7 @@ size_t TinyGetStringLength(const TinyValue* value) {
 void TinySetString(TinyValue *value, const char* str, size_t len) {
     assert(value != NULL && (str != NULL || len == 0));
     TinyFree(value);
-    value->str = new char[len + 1];
+    value->str = (char*)malloc(len + 1);
     memcpy(value->str, str, len);
     value->str[len] = '\0';
     value->len = len;
@@ -402,7 +486,7 @@ void TinyFree(TinyValue *value) {
     switch (value->type)
     {
     case TINY_STRING:
-        delete[] value->str;
+        free(value->str);
         break;
     case TINY_ARRAY:
         //释放元素
@@ -411,6 +495,14 @@ void TinyFree(TinyValue *value) {
         }
         //释放数组
         free(value->array);
+        break;
+    case TINY_OBJECT:
+        for(size_t i = 0; i < value->msize; i++){
+            free(value->member[i].key);
+            TinyFree(&value->member[i].value);
+        }
+        free(value->member);
+        break;
     default:
         break;
     }
