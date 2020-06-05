@@ -17,7 +17,7 @@ enum TinyType {
     TINY_NUMBER,
     TINY_STRING,
     TINY_ARRAY,
-    TINY_OBJECT
+    TINY_OBJECT,
 };
 
 struct TinyValue {
@@ -25,6 +25,10 @@ struct TinyValue {
         struct {
             char *str;
             size_t len;
+        };
+        struct {
+            TinyValue* array;
+            size_t size;
         };
         double num;
     };
@@ -51,6 +55,8 @@ enum TinyParseReact{
 
     TINY_PARSE_INVALID_UNICODE_HEX,       //不符合4位十六进制数字
     TINY_PARSE_INVALID_UNICODE_SURROGATE, //范围不正确 U+0000 ~ U+10FFFF
+
+    TINY_PARSE_MISS_COMMA_OR_SQUARE_BRACKET,
 };
 
 void TinyFree(TinyValue *value);
@@ -64,6 +70,8 @@ bool TinyGetBoolean(const TinyValue* value);
 double TinyGetNumber(const TinyValue* value);
 const char* TinyGetString(const TinyValue* value);
 size_t TinyGetStringLength(const TinyValue* value);
+size_t TinyGetArraySize(const TinyValue* value);
+TinyValue* TinyGetArrayElement(const TinyValue* value, size_t index);
 
 void TinySetNull(TinyValue* value);
 void TinySetBoolen(TinyValue* value, bool flag);

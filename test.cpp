@@ -24,12 +24,18 @@ static int mainRet = 0;
     } while(0)
 
 #define EXPECT_EQ_INT(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%d")
+
 #define EXPECT_EQ_DOUBLE(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%.17f")
-#define EXPECT_EQ_SINGLE(expect, actual, aLength) \
+
+#define EXPECT_EQ_STRING(expect, actual, aLength) \
     EXPECT_EQ_BASE(sizeof(expect) - 1 == aLength && \
     memcmp(expect, actual, aLength) == 0, expect, actual, "%s")
-#define EXPECT_EQ_TRUE(actual) EXPECT_EQ_BASE((actual == true), "true", "false", "%s");
-#define EXPECT_EQ_FALSE(actual) EXPECT_EQ_BASE((actual == false), "false", "true", "%s");
+
+#define EXPECT_EQ_TRUE(actual) EXPECT_EQ_BASE(((actual) == true), "true", "false", "%s");
+
+#define EXPECT_EQ_FALSE(actual) EXPECT_EQ_BASE(((actual) == false), "false", "true", "%s");
+
+#define EXPECT_EQ_SIZE_T(expect, actual) EXPECT_EQ_BASE((expect) == (actual), (size_t)expect, (size_t)actual, "%zu");
 
 #define TEST_PARSE(expectReact, expectValType, json)\
     do {\
@@ -60,9 +66,10 @@ static int mainRet = 0;
         TinyInitValue(&value);\
         EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&value, json));\
         EXPECT_EQ_INT(TINY_STRING, TinyGetType(&value));\
-        EXPECT_EQ_SINGLE(expect, TinyGetString(&value), TinyGetStringLength(&value));\
+        EXPECT_EQ_STRING(expect, TinyGetString(&value), TinyGetStringLength(&value));\
         TinyFree(&value);\
     } while(0)
+
 
 static void TestParseOk() {
     TEST_PARSE(TINY_PARSE_OK, TINY_NULL, "null");
@@ -157,26 +164,6 @@ static void TestParseNumber() {
     TEST_PARSE_NUMBER(TINY_PARSE_OK, -1.7976931348623157e+308, "-1.7976931348623157e+308");
 }
 
-static void TestAccessBool() {
-    TinyValue value;
-    TinyInitValue(&value);
-    TinySetBoolen(&value, 0);
-    EXPECT_EQ_FALSE(TinyGetBoolean(&value));
-
-    TinySetBoolen(&value, true);
-    EXPECT_EQ_TRUE(TinyGetBoolean(&value));
-    TinyFree(&value);
-}
-
-static void TestAccessNull() {
-    TinyValue value;
-    TinyInitValue(&value);
-    TinySetString(&value, "a", 1);
-    TinySetNull(&value);
-    EXPECT_EQ_INT(TINY_NULL,TinyGetType(&value));
-    TinyFree(&value);
-}
-
 static void TestParseMissingQuotationMark() {
     TEST_PARSE_ERROR(TINY_PARSE_MISS_QUOTATION_MARK, "\"");
     TEST_PARSE_ERROR(TINY_PARSE_MISS_QUOTATION_MARK, "\"abc");
@@ -218,6 +205,66 @@ static void TestParseInvalidUnicodeSurrodate() {
     TEST_PARSE_ERROR(TINY_PARSE_INVALID_UNICODE_SURROGATE, "\"\\uD800\\uE000\"");
 }
 
+static void TestParseArray() {
+    TinyValue value;
+    TinyInitValue(&value);
+    EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&value, "[ null, false, true, 123, \"abc\" ]"));
+    EXPECT_EQ_INT(TINY_ARRAY, TinyGetType(&value));
+    EXPECT_EQ_SIZE_T(5,  TinyGetArraySize(&value));
+    EXPECT_EQ_INT(TINY_NULL, TinyGetType(TinyGetArrayElement(&value, 0)));
+    EXPECT_EQ_INT(TINY_FALSE, TinyGetType(TinyGetArrayElement(&value, 1)));
+    EXPECT_EQ_INT(TINY_TRUE, TinyGetType(TinyGetArrayElement(&value, 2)));
+    EXPECT_EQ_INT(TINY_NUMBER, TinyGetType(TinyGetArrayElement(&value, 3)));
+    EXPECT_EQ_INT(TINY_STRING, TinyGetType(TinyGetArrayElement(&value, 4)));
+    EXPECT_EQ_DOUBLE(123.0, TinyGetNumber(TinyGetArrayElement(&value, 3)));
+    EXPECT_EQ_STRING("abc", TinyGetString(TinyGetArrayElement(&value, 4)), 
+            TinyGetStringLength(TinyGetArrayElement(&value, 4)));
+    TinyFree(&value);
+
+    TinyInitValue(&value);
+    EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&value, "[ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]"));
+    EXPECT_EQ_INT(TINY_ARRAY, TinyGetType(&value));
+    EXPECT_EQ_SIZE_T(4,  TinyGetArraySize(&value));
+    for(size_t i = 0; i < 4; i++) {
+        TinyValue* arr = TinyGetArrayElement(&value, i);
+        EXPECT_EQ_INT(TINY_ARRAY, TinyGetType(arr));
+        EXPECT_EQ_SIZE_T(i,  TinyGetArraySize(arr));
+        for(size_t j = 0; j < i; j++) {
+            TinyValue* e = TinyGetArrayElement(arr, j);
+            EXPECT_EQ_INT(TINY_NUMBER, TinyGetType(e));
+            EXPECT_EQ_DOUBLE((double)j, TinyGetNumber(e));
+        }
+    }
+    TinyFree(&value);
+}
+
+static void TestParseMissCommaOrSquareBracket(){
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1}");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1, 2");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1 2");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[[[]]");
+}
+
+static void TestAccessBool() {
+    TinyValue value;
+    TinyInitValue(&value);
+    TinySetBoolen(&value, 0);
+    EXPECT_EQ_FALSE(TinyGetBoolean(&value));
+
+    TinySetBoolen(&value, true);
+    EXPECT_EQ_TRUE(TinyGetBoolean(&value));
+    TinyFree(&value);
+}
+
+static void TestAccessNull() {
+    TinyValue value;
+    TinyInitValue(&value);
+    TinySetString(&value, "a", 1);
+    TinySetNull(&value);
+    EXPECT_EQ_INT(TINY_NULL,TinyGetType(&value));
+    TinyFree(&value);
+}
 
 static void TestAccessNumber() {
     TinyValue value;
@@ -231,9 +278,9 @@ static void TestAccessString() {
     TinyValue value;
     TinyInitValue(&value);
     TinySetString(&value, "", 0);
-    EXPECT_EQ_SINGLE("", TinyGetString(&value), TinyGetStringLength(&value));
+    EXPECT_EQ_STRING("", TinyGetString(&value), TinyGetStringLength(&value));
     TinySetString(&value, "Hello", 5);
-    EXPECT_EQ_SINGLE("Hello", TinyGetString(&value), TinyGetStringLength(&value));
+    EXPECT_EQ_STRING("Hello", TinyGetString(&value), TinyGetStringLength(&value));
     TinyFree(&value);
 }
 
@@ -253,6 +300,9 @@ static void TestParse() {
 
     TestParseInvalidUnicodeSurrodate();
     TestParseInvalidUnicodeHex();
+
+    TestParseArray();
+    TestParseMissCommaOrSquareBracket();
 }
 
 static void TestAccess() {
@@ -261,7 +311,6 @@ static void TestAccess() {
     TestAccessBool();
     TestAccessNull();
 }
-
 
 int main() {
     TestParse();

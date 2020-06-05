@@ -39,7 +39,7 @@ static bool isDigit(const char t) {
 
 static int TinyParseNumber(TinyContext* context, TinyValue* value) {
     const char* p = context->json;
-
+    
     if(*p == '-') p++;
     if(*p == '0') p++;
     else {
@@ -154,7 +154,7 @@ static void TinyEncodeUtf8(TinyContext* context, unsigned u) {
         TinyPutC(context, 0x80 | ( u        & 0x3F));
     }
     else if(u <= 0x10fffff) {
-       //Unicode的最大码位为0x10FFFF       
+        //Unicode的最大码位为0x10FFFF       
         TinyPutC(context, 0xF0 | ((u >> 18) & 0xFF));
         TinyPutC(context, 0x80 | ((u >> 12) & 0x3F));
         TinyPutC(context, 0x80 | ((u >>  6) & 0x3F));
@@ -187,6 +187,7 @@ static int TinyParseString(TinyContext* context, TinyValue* value) {
                 return TINY_PARSE_OK;
             }
             case '\\':
+                //解析转义符和utf8字符
                 switch(*p++) {
                     case '\"': { TinyPutC(context, '\"'); break; }
                     case '\\': { TinyPutC(context, '\\'); break; }
@@ -252,6 +253,58 @@ static int TinyParseString(TinyContext* context, TinyValue* value) {
     }
 }
 
+static int TinyParseValue(TinyContext* context, TinyValue* value);
+
+static int TinyParseArray(TinyContext* context, TinyValue* value) {
+    size_t size = 0;
+    int ret;
+
+    assert(*context->json == '[');
+    context->json++;
+
+    TinyParseWhiteSpace(context);
+    if(*context->json == ']') {
+        context->json++;
+        value->type = TINY_ARRAY;
+        value->size = 0;
+        value->array = NULL;
+        return TINY_PARSE_OK;
+    }
+
+    while(true) {
+        TinyValue element;
+        TinyInitValue(&element);
+        ret = TinyParseValue(context, &element);
+        if(ret != TINY_PARSE_OK) {
+            break;
+        }
+        memcpy(TinyContextPush(context, sizeof(TinyValue)), &element, sizeof(TinyValue));
+        size++;
+        TinyParseWhiteSpace(context);
+        if(*context->json == ',') {
+            context->json++;
+            TinyParseWhiteSpace(context);
+        }
+        else if(*context->json == ']') {
+            context->json++;
+            value->type = TINY_ARRAY;
+            value->size = size;
+            size = size * sizeof(TinyValue);
+            value->array = (TinyValue*)malloc(size);
+            memcpy(value->array, TinyContextPop(context, size), size);
+            return TINY_PARSE_OK;
+        } else {
+            ret = TINY_PARSE_MISS_COMMA_OR_SQUARE_BRACKET;
+            break;
+        }
+    }
+    //失败后需要释放压入缓存区的元素
+    for(size_t i = 0; i < size; i++) {
+        TinyFree((TinyValue*)TinyContextPop(context, sizeof(TinyValue)));
+    }
+    return ret;
+}
+
 static int TinyParseValue(TinyContext* context, TinyValue* value) {
     switch(*context->json) {
         case 'n': return TinyParseLiteral(context, value, "null", TINY_NULL);
@@ -259,6 +312,7 @@ static int TinyParseValue(TinyContext* context, TinyValue* value) {
         case 'f': return TinyParseLiteral(context, value, "false", TINY_FALSE);
         default: return TinyParseNumber(context, value);
         case '"': return TinyParseString(context, value);
+        case '[': return TinyParseArray(context, value);
         case '\0': return TINY_PARSE_EXPECT_VALUE;
     }
 }
@@ -345,15 +399,30 @@ void TinyInitValue(TinyValue *value) {
 
 void TinyFree(TinyValue *value) {
     assert(value != NULL);
-    if(value->type == TINY_STRING) {
+    switch (value->type)
+    {
+    case TINY_STRING:
         delete[] value->str;
+        break;
+    case TINY_ARRAY:
+        //释放元素
+        for(size_t i = 0; i < value->size; i++) {
+            TinyFree(&value->array[i]);
+        }
+        //释放数组
+        free(value->array);
+    default:
+        break;
     }
     value->type = TINY_NULL;
 }
 
-
-
-
-
-
-
+size_t TinyGetArraySize(const TinyValue* value) {
+    assert(value != NULL && value->type == TINY_ARRAY);
+    return value->size;
+}
+TinyValue* TinyGetArrayElement(const TinyValue* value, size_t index) {
+    assert(value != NULL && value->type == TINY_ARRAY);
+    assert(index < value->size);
+    return &value->array[index];
+}
