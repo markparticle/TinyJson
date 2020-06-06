@@ -318,8 +318,10 @@ static int TinyParseObject(TinyContext* context, TinyValue* value) {
     size_t size;
     TinyMember m;
     int ret;
+
     assert(*context->json == '{');
     context->json++;
+
     TinyParseWhiteSpace(context);
     if(*context->json == '}') {
         context->json++;
@@ -328,9 +330,13 @@ static int TinyParseObject(TinyContext* context, TinyValue* value) {
         value->msize = 0;
         return TINY_PARSE_OK;
     }
+
+    m.key = NULL;
+    size = 0;
     while(true) {
         char * str;
         TinyInitValue(&m.value);
+
         // 1. parse key
         if(*context->json != '"') {
             ret = TINY_PARSE_MISS_KEY;
@@ -343,22 +349,26 @@ static int TinyParseObject(TinyContext* context, TinyValue* value) {
         m.key = (char*)malloc(m.kLen + 1);
         memcpy(m.key, str, m.kLen);
         m.key[m.kLen] = '\0';
+
         // 2. parse colon
+        TinyParseWhiteSpace(context);
         if(*context->json != ':') {
             ret = TINY_PARSE_MISS_COLON;
             break;
         }
         context->json++;
-        TinyParseWhiteSpace(context);
+
         // 3. parse value
+        TinyParseWhiteSpace(context);
         ret = TinyParseValue(context, &m.value);
         if(ret != TINY_PARSE_OK) {
             break;
         }
         // 写入缓冲区
-        memcpy(TinyContextPush(context, sizeof(TinyValue)), &m, sizeof(TinyMember));
+        memcpy(TinyContextPush(context, sizeof(TinyMember)), &m, sizeof(TinyMember));
         size++;
         m.key = NULL;
+
         // 4. parse  comma / right-curly-brace
         TinyParseWhiteSpace(context);
         if(*context->json == ',') {
@@ -366,18 +376,19 @@ static int TinyParseObject(TinyContext* context, TinyValue* value) {
             TinyParseWhiteSpace(context);
         }
         else if (*context->json == '}') {
-            size_t msize = sizeof(TinyMember) * size;
             context->json++;
             value->type = TINY_OBJECT;
             value->msize = size;
-            value->member = (TinyMember*)malloc(msize);
-            memcpy(value->member, TinyContextPop(context, msize), msize);
+            size_t s = sizeof(TinyMember) * size;
+            value->member = (TinyMember*)malloc(s);
+            memcpy(value->member, TinyContextPop(context, s), s);
             return TINY_PARSE_OK;
         } else {
             ret = TINY_PARSE_MISS_COMMA_OR_CURLY_BRACKET;
             break;
         }
     }
+    
     free(m.key);
     for(size_t i = 0; i < size; i++) {
         TinyMember* m = (TinyMember*) TinyContextPop(context, sizeof(TinyMember));
@@ -513,6 +524,7 @@ size_t TinyGetArraySize(const TinyValue* value) {
     assert(value != NULL && value->type == TINY_ARRAY);
     return value->size;
 }
+
 TinyValue* TinyGetArrayElement(const TinyValue* value, size_t index) {
     assert(value != NULL && value->type == TINY_ARRAY);
     assert(index < value->size);
