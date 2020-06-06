@@ -246,6 +246,29 @@ static void TestParseMissCommaOrSquareBracket(){
     TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[[[]]");
 }
 
+static void TestParseMissKey() {
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_KEY, "{:1,");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_KEY, "{1:1,");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_KEY, "{true:1,");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_KEY, "{false:1,");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_KEY, "{null:1,");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_KEY, "{[]:1,");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_KEY, "{{}:1,");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_KEY, "{\"a\":1,");
+}
+
+static void TestParseMissColon() {
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_COLON, "{\"a\"}");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_COLON, "{\"a\", \"b\"}");
+}
+
+static void TestParseMissCommaOrCurlyBracket() {
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_CURLY_BRACKET, "{\"a\": 1");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_CURLY_BRACKET, "{\"a\": 1]");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_CURLY_BRACKET, "{\"a\": 1 \"b\"");
+    TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_CURLY_BRACKET, "{\"a\": {}");
+}
+
 static void TestAccessBool() {
     TinyValue value;
     TinyInitValue(&value);
@@ -288,11 +311,12 @@ static void TestParse() {
     TestParseOk();
     TestParseNumber();
     TestParseString();
-
+    // error
+    // number
     TestParseNumberToBig();
     TestParseExceptValue();
     TestParseRootNoSingular();
-
+    // string
     TestParseInvalidValue();
     TestParseInvalidStringChar();
     TestParseInvalidStringEscape();
@@ -300,9 +324,13 @@ static void TestParse() {
 
     TestParseInvalidUnicodeSurrodate();
     TestParseInvalidUnicodeHex();
-
+    // array
     TestParseArray();
     TestParseMissCommaOrSquareBracket();
+    // object
+    TestParseMissKey();
+    TestParseMissColon();
+    TestParseMissCommaOrCurlyBracket();
 }
 
 static void TestAccess() {
