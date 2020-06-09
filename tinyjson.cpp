@@ -12,7 +12,6 @@
 #include <stdlib.h>  /* NULL, malloc(), realloc(), free(), strtod() */
 #include <string.h>  /* memcpy() */
 
-
 static int TinyParseValue(TinyContext* context, TinyValue* value);
 
 //解析空白
@@ -458,11 +457,11 @@ static void TinyStringifyString(TinyContext* context, const char *str, size_t le
         {
         case '\"': *p++ = '\\'; *p++ = '\"'; break;
         case '\\': *p++ = '\\'; *p++ = '\\'; break;
-        case '\b': *p++ = '\\'; *p++ = '\b'; break;
-        case '\f': *p++ = '\\'; *p++ = '\f'; break;
-        case '\n': *p++ = '\\'; *p++ = '\n'; break;
-        case '\r': *p++ = '\\'; *p++ = '\r'; break;
-        case '\t': *p++ = '\\'; *p++ = '\t'; break;
+        case '\b': *p++ = '\\'; *p++ = 'b'; break;
+        case '\f': *p++ = '\\'; *p++ = 'f'; break;
+        case '\n': *p++ = '\\'; *p++ = 'n'; break;
+        case '\r': *p++ = '\\'; *p++ = 'r'; break;
+        case '\t': *p++ = '\\'; *p++ = 't'; break;
         default:
             // 小于0x20的字符需要转义为\u00xx的形式
             if(ch < 0x20) {
