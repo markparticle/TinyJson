@@ -5,12 +5,13 @@
  */ 
 
 #include "tinyjson.h"
-#include <stdio.h>
-#include <assert.h>    /* assert() */
-#include <stdlib.h>    /* NULL, strtod(),  malloc(), realloc(), free()*/
-#include <errno.h>     /* errno, ERANGE */
-#include <math.h>      /* HUGE_VAL */
-#include <cstring>      /* memcpy() */
+#include <assert.h>  /* assert() */
+#include <errno.h>   /* errno, ERANGE */
+#include <math.h>    /* HUGE_VAL */
+#include <stdio.h>   /* sprintf() */
+#include <stdlib.h>  /* NULL, malloc(), realloc(), free(), strtod() */
+#include <string.h>  /* memcpy() */
+
 
 static int TinyParseValue(TinyContext* context, TinyValue* value);
 
@@ -87,10 +88,10 @@ static void* TinyContextPush(TinyContext* context, size_t size) {
             context->size += context->size >> 1; /* context->size * 1.5 */
         }
         //分配空间
-        context->strStack = (char*)realloc(context->strStack, context->size);
+        context->stack = (char*)realloc(context->stack, context->size);
     }
-    //返回原top起点
-    ret = context->strStack + context->top;
+    //返回 元素开始的 位置
+    ret = context->stack + context->top;
     context->top += size;
     return ret;
 }
@@ -98,13 +99,17 @@ static void* TinyContextPush(TinyContext* context, size_t size) {
 static void* TinyContextPop(TinyContext* context, size_t size) {
     assert(context->top >= size);
     context->top -= size;
-    return context->strStack + context->top;
+    return context->stack + context->top;
 }
 
 static void TinyPutC(TinyContext* context, const char ch) {
     char* top = (char*)TinyContextPush(context, sizeof(char));
     // 写入stack
     *top = ch;
+}
+
+static void TinyPutS(TinyContext* context, const char* str, size_t len) {
+    memcpy(TinyContextPush(context, len), str, len);
 }
 
 //读取4位六进制
@@ -189,14 +194,14 @@ static int TinyParseStringRaw(TinyContext* context, char** str, size_t* len) {
             case '\\':
                 //解析转义符和utf8字符
                 switch(*p++) {
-                    case '\"': { TinyPutC(context, '\"'); break; }
-                    case '\\': { TinyPutC(context, '\\'); break; }
-                    case '/': { TinyPutC(context, '/'); break; }
-                    case 'b': { TinyPutC(context, '\b'); break; }
-                    case 'f': { TinyPutC(context, '\f'); break; }
-                    case 'n': { TinyPutC(context, '\n'); break; }
-                    case 'r': { TinyPutC(context, '\r'); break; }
-                    case 't': { TinyPutC(context, '\t'); break; }
+                    case '\"': TinyPutC(context, '\"'); break;
+                    case '\\': TinyPutC(context, '\\'); break;
+                    case '/': TinyPutC(context, '/'); break;
+                    case 'b': TinyPutC(context, '\b'); break;
+                    case 'f': TinyPutC(context, '\f'); break;
+                    case 'n': TinyPutC(context, '\n'); break;
+                    case 'r': TinyPutC(context, '\r'); break;
+                    case 't': TinyPutC(context, '\t'); break;
                     case 'u': {
                         p = TinyParseHex4(p, &u);
                         if(p == NULL) {
@@ -420,7 +425,7 @@ int TinyParse(TinyValue *value, const char* json) {
     TinyInitValue(value);
     //初始化context
     context.json = json;
-    context.strStack = NULL;
+    context.stack = NULL;
     context.size = context.top = 0;
 
     TinyParseWhiteSpace(&context);
@@ -434,8 +439,106 @@ int TinyParse(TinyValue *value, const char* json) {
         }
     }
     assert(context.top == 0);
-    free(context.strStack);
+    free(context.stack);
     return ret;
+}
+
+static void TinyStringifyString(TinyContext* context, const char *str, size_t len) {
+    static const char hexDigits[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+                                      'A', 'B', 'C', 'D', 'E', 'F'};
+    size_t size = len * 6 + 2; //  "\u00xx"
+    char* head, *p;
+
+    assert(str != NULL);
+    p = head = (char*)TinyContextPush(context, size);
+    *p++ = '"';
+    for(size_t i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)str[i];
+        switch (ch)
+        {
+        case '\"': *p++ = '\\'; *p++ = '\"'; break;
+        case '\\': *p++ = '\\'; *p++ = '\\'; break;
+        case '\b': *p++ = '\\'; *p++ = '\b'; break;
+        case '\f': *p++ = '\\'; *p++ = '\f'; break;
+        case '\n': *p++ = '\\'; *p++ = '\n'; break;
+        case '\r': *p++ = '\\'; *p++ = '\r'; break;
+        case '\t': *p++ = '\\'; *p++ = '\t'; break;
+        default:
+            // 小于0x20的字符需要转义为\u00xx的形式
+            if(ch < 0x20) {
+                char buff[7];
+                sprintf(buff, "\\u%04X", ch); // 按16进制输出(大写)，最小输出宽度为4个字符
+                *p++ = '\\'; 
+                *p++ = 'u'; 
+                *p++ = '0'; 
+                *p++ = '0';
+                *p++ = hexDigits[ch >> 4];
+                *p++ = hexDigits[ch & 15];
+            } else {
+                *p++ = str[i];
+            }
+            break;
+        }
+    }
+    *p++ = '"';
+    context->top -= size - (p - head);     //对齐
+}
+
+static void TinyStringifyValue(TinyContext* context, const TinyValue* value) {
+    switch (value->type)
+    {
+    case TINY_NULL: TinyPutS(context, "null", 4); break;
+    case TINY_FALSE: TinyPutS(context, "false", 5); break;
+    case TINY_TRUE: TinyPutS(context, "true", 4); break;
+    case TINY_STRING: TinyStringifyString(context, value->str, value->len); break;
+    case TINY_NUMBER:
+        {
+             char* buff = (char*)TinyContextPush(context, 32);
+             int len = sprintf(buff, "%.17g", value->num);
+             context->top -= 32 - len;
+        }
+        break;
+    case TINY_ARRAY:
+        {
+            TinyPutC(context, '[');
+            for(size_t i = 0; i < value->size; i++) {
+                if(i > 0) TinyPutC(context, ',');
+                TinyStringifyValue(context, &value->array[i]);
+            }
+            TinyPutC(context, ']');
+        }
+        break;
+    case TINY_OBJECT:
+        {
+            TinyPutC(context, '{');
+            for(size_t i = 0; i < value->msize; i++) {
+                if(i > 0) TinyPutC(context, ',');
+                TinyStringifyString(context, value->member[i].key, value->member[i].kLen);
+                TinyPutC(context, ':');
+                TinyStringifyValue(context, &value->member[i].value);
+            }
+            TinyPutC(context, '}');
+        }
+        break;
+    default:
+        assert(0 && "invalid type");
+        break;
+    }
+}
+
+char* TinyStringify(const TinyValue* value, size_t* len) {
+    TinyContext context;
+    assert(value != NULL);
+
+    context.size = TINY_STACK_SIZE;
+    context.stack = (char*)malloc(context.size);
+    context.top = 0;
+
+    TinyStringifyValue(&context, value);
+    if(len > 0) *len = context.top;
+    TinyPutC(&context, '\0');
+
+    return context.stack;
 }
 
 void TinySetNull(TinyValue* value) {
@@ -529,4 +632,27 @@ TinyValue* TinyGetArrayElement(const TinyValue* value, size_t index) {
     assert(value != NULL && value->type == TINY_ARRAY);
     assert(index < value->size);
     return &value->array[index];
+}
+
+size_t TinyGetObjectSize(const TinyValue* value) {
+    assert(value != NULL && value->type == TINY_OBJECT);
+    return value->msize;
+}
+
+const char* TinyGetObjectKey(const TinyValue* value, size_t index) {
+    assert(value != NULL && value->type == TINY_OBJECT);
+    assert(index < value->msize);
+    return value->member[index].key;
+}
+
+size_t TinyGetObjectKeyLength(const TinyValue* value, size_t index) {
+    assert(value != NULL && value->type == TINY_OBJECT);
+    assert(index < value->msize);
+    return value->member[index].kLen;
+}
+
+TinyValue* TinyGetObjectValue(const TinyValue* value, size_t index) {
+    assert(value != NULL && value->type == TINY_OBJECT);
+    assert(index < value->msize);
+    return &value->member[index].value;
 }

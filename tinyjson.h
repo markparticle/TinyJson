@@ -6,10 +6,13 @@
 
 #ifndef TINYJSON_H
 #define TINYJSON_H
-#include <stdlib.h>
-#include <unordered_map>
+
+#include <stddef.h> /* size_t */
 
 const size_t TINY_STACK_SIZE = 256;
+
+typedef struct TinyValue TinyValue; 
+typedef struct TinyMember TinyMember; 
 
 enum TinyType {
     TINY_NULL,
@@ -21,8 +24,6 @@ enum TinyType {
     TINY_OBJECT,
 };
 
-typedef struct TinyValue TinyValue; 
-typedef struct TinyMember TinyMember; 
 struct TinyValue {
     union {
         struct {
@@ -50,7 +51,7 @@ struct TinyMember {
 
 struct TinyContext {
     const char* json;
-    char * strStack;
+    char * stack;
     size_t size, top;
 };
 
@@ -74,21 +75,30 @@ enum TinyParseReact{
     TINY_PARSE_MISS_KEY,
     TINY_PARSE_MISS_COLON,
     TINY_PARSE_MISS_COMMA_OR_CURLY_BRACKET,
+
+    TINY_STRINGIFY_OK,
 };
 
+void TinyInitValue(TinyValue *value);
 void TinyFree(TinyValue *value);
 
 int TinyParse(TinyValue *value, const char* json);
-
-void TinyInitValue(TinyValue *value);
+char* TinyStringify(const TinyValue* value, size_t* len);
 
 TinyType TinyGetType(const TinyValue* value);
 bool TinyGetBoolean(const TinyValue* value);
 double TinyGetNumber(const TinyValue* value);
+
 const char* TinyGetString(const TinyValue* value);
 size_t TinyGetStringLength(const TinyValue* value);
+
 size_t TinyGetArraySize(const TinyValue* value);
 TinyValue* TinyGetArrayElement(const TinyValue* value, size_t index);
+
+size_t TinyGetObjectSize(const TinyValue* value);
+const char* TinyGetObjectKey(const TinyValue* value, size_t index);
+size_t TinyGetObjectKeyLength(const TinyValue* value, size_t index);
+TinyValue* TinyGetObjectValue(const TinyValue* value, size_t index);
 
 void TinySetNull(TinyValue* value);
 void TinySetBoolen(TinyValue* value, bool flag);
