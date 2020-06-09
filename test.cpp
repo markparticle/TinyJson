@@ -74,10 +74,9 @@ static int mainRet = 0;
     do {\
         TinyValue value;\
         size_t len;\
-        char* json2;\
         TinyInitValue(&value);\
         EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&value, json));\
-        json2 = TinyStringify(&value, &len);\
+        char* json2 = TinyStringify(&value, &len);\
         EXPECT_EQ_STRING(json, json2, len);\
         TinyFree(&value);\
         free(json2);\
@@ -255,12 +254,11 @@ static void TestParseObject() {
     TinyInitValue(&value);
     EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&value, "{ }"));
     EXPECT_EQ_INT(TINY_OBJECT, TinyGetType(&value));
-    EXPECT_EQ_SIZE_T(0,  TinyGetArraySize(&value));
+    EXPECT_EQ_SIZE_T(0,  TinyGetObjectSize(&value));
     TinyFree(&value);
-
     TinyInitValue(&value);
     EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&value, 
-      " { "
+        " { "
         "\"n\" : null , "
         "\"f\" : false , "
         "\"t\" : true , "
@@ -286,7 +284,7 @@ static void TestParseObject() {
     EXPECT_EQ_STRING("abc", TinyGetString(TinyGetObjectValue(&value, 4)), TinyGetStringLength(TinyGetObjectValue(&value, 4)));
     EXPECT_EQ_STRING("a", TinyGetObjectKey(&value, 5), TinyGetObjectKeyLength(&value, 5));
     EXPECT_EQ_INT(TINY_ARRAY, TinyGetType(TinyGetObjectValue(&value, 5)));
-    EXPECT_EQ_SIZE_T(3, TinyGetObjectSize(TinyGetObjectValue(&value, 5)));
+    EXPECT_EQ_SIZE_T(3, TinyGetArraySize(TinyGetObjectValue(&value, 5)));
     for (size_t i = 0; i < 3; i++) {
         TinyValue* e = TinyGetArrayElement(TinyGetObjectValue(&value, 5), i);
         EXPECT_EQ_INT(TINY_NUMBER, TinyGetType(e));
