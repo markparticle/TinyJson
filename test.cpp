@@ -61,7 +61,7 @@ static int mainRet = 0;
     } while(0)
 
 #define TEST_STRING(expect, json) \
-    do{\
+    do {\
         TinyValue value;\
         TinyInitValue(&value);\
         EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&value, json));\
@@ -70,6 +70,18 @@ static int mainRet = 0;
         TinyFree(&value);\
     } while(0)
 
+#define TEST_ROUNDTRIP(json) \
+    do {\
+        TinyValue value;\
+        size_t len;\
+        char* json2;\
+        TinyInitValue(&value);\
+        EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&value, json));\
+        json2 = TinyStringify(&value, &len);\
+        EXPECT_EQ_STRING(json, json2, len);\
+        TinyFree(&value);\
+        free(json2);\
+    } while(0)
 
 static void TestParseOk() {
     TEST_PARSE(TINY_PARSE_OK, TINY_NULL, "null");
@@ -238,6 +250,63 @@ static void TestParseArray() {
     TinyFree(&value);
 }
 
+static void TestParseObject() {
+    TinyValue value;
+    TinyInitValue(&value);
+    EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&value, "{ }"));
+    EXPECT_EQ_INT(TINY_OBJECT, TinyGetType(&value));
+    EXPECT_EQ_SIZE_T(0,  TinyGetArraySize(&value));
+    TinyFree(&value);
+
+    TinyInitValue(&value);
+    EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&value, 
+      " { "
+        "\"n\" : null , "
+        "\"f\" : false , "
+        "\"t\" : true , "
+        "\"i\" : 123 , "
+        "\"s\" : \"abc\", "
+        "\"a\" : [ 1, 2, 3 ],"
+        "\"o\" : { \"1\" : 1, \"2\" : 2, \"3\" : 3 }"
+        " } "
+    ));
+    EXPECT_EQ_INT(TINY_OBJECT, TinyGetType(&value));
+    EXPECT_EQ_SIZE_T(7, TinyGetObjectSize(&value));
+    EXPECT_EQ_STRING("n", TinyGetObjectKey(&value, 0), TinyGetObjectKeyLength(&value, 0));
+    EXPECT_EQ_INT(TINY_NULL,   TinyGetType(TinyGetObjectValue(&value, 0)));
+    EXPECT_EQ_STRING("f", TinyGetObjectKey(&value, 1), TinyGetObjectKeyLength(&value, 1));
+    EXPECT_EQ_INT(TINY_FALSE,  TinyGetType(TinyGetObjectValue(&value, 1)));
+    EXPECT_EQ_STRING("t", TinyGetObjectKey(&value, 2), TinyGetObjectKeyLength(&value, 2));
+    EXPECT_EQ_INT(TINY_TRUE,   TinyGetType(TinyGetObjectValue(&value, 2)));
+    EXPECT_EQ_STRING("i", TinyGetObjectKey(&value, 3), TinyGetObjectKeyLength(&value, 3));
+    EXPECT_EQ_INT(TINY_NUMBER, TinyGetType(TinyGetObjectValue(&value, 3)));
+    EXPECT_EQ_DOUBLE(123.0, TinyGetNumber(TinyGetObjectValue(&value, 3)));
+    EXPECT_EQ_STRING("s", TinyGetObjectKey(&value, 4), TinyGetObjectKeyLength(&value, 4));
+    EXPECT_EQ_INT(TINY_STRING, TinyGetType(TinyGetObjectValue(&value, 4)));
+    EXPECT_EQ_STRING("abc", TinyGetString(TinyGetObjectValue(&value, 4)), TinyGetStringLength(TinyGetObjectValue(&value, 4)));
+    EXPECT_EQ_STRING("a", TinyGetObjectKey(&value, 5), TinyGetObjectKeyLength(&value, 5));
+    EXPECT_EQ_INT(TINY_ARRAY, TinyGetType(TinyGetObjectValue(&value, 5)));
+    EXPECT_EQ_SIZE_T(3, TinyGetObjectSize(TinyGetObjectValue(&value, 5)));
+    for (size_t i = 0; i < 3; i++) {
+        TinyValue* e = TinyGetArrayElement(TinyGetObjectValue(&value, 5), i);
+        EXPECT_EQ_INT(TINY_NUMBER, TinyGetType(e));
+        EXPECT_EQ_DOUBLE(i + 1.0, TinyGetNumber(e));
+    }
+    EXPECT_EQ_STRING("o", TinyGetObjectKey(&value, 6), TinyGetObjectKeyLength(&value, 6));
+    {
+        TinyValue* o = TinyGetObjectValue(&value, 6);
+        EXPECT_EQ_INT(TINY_OBJECT, TinyGetType(o));
+        for (size_t i = 0; i < 3; i++) {
+            TinyValue* ov = TinyGetObjectValue(o, i);
+            EXPECT_EQ_TRUE('1' + i == TinyGetObjectKey(o, i)[0]);
+            EXPECT_EQ_SIZE_T(1, TinyGetObjectKeyLength(o, i));
+            EXPECT_EQ_INT(TINY_NUMBER, TinyGetType(ov));
+            EXPECT_EQ_DOUBLE(i + 1.0, TinyGetNumber(ov));
+        }
+    }
+    TinyFree(&value);
+}
+
 static void TestParseMissCommaOrSquareBracket(){
     TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1");
     TEST_PARSE_ERROR(TINY_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1}");
@@ -307,6 +376,47 @@ static void TestAccessString() {
     TinyFree(&value);
 }
 
+static void TestStringifyNumber() {
+    TEST_ROUNDTRIP("0");
+    TEST_ROUNDTRIP("-0");
+    TEST_ROUNDTRIP("-0");
+    TEST_ROUNDTRIP("1");
+    TEST_ROUNDTRIP("-1");
+    TEST_ROUNDTRIP("1.5");
+    TEST_ROUNDTRIP("-1.5");
+    TEST_ROUNDTRIP("-1e+20");
+    TEST_ROUNDTRIP("1.234e+20");
+    TEST_ROUNDTRIP("1.234e-20");
+
+    TEST_ROUNDTRIP("1.0000000000000002");       /* the smallest number > 1 */
+    TEST_ROUNDTRIP("4.9406564584124654e-324");   /* minimum denormal */
+    TEST_ROUNDTRIP("-4.9406564584124654e-324");
+    TEST_ROUNDTRIP("2.2250738585072009e-308");  /* Max subnormal double */
+    TEST_ROUNDTRIP("-2.2250738585072009e-308");
+    TEST_ROUNDTRIP("2.2250738585072014e-308"); /* Min normal positive double */
+    TEST_ROUNDTRIP("-2.2250738585072014e-308");
+    TEST_ROUNDTRIP("1.7976931348623157e+308"); /* Max double */
+    TEST_ROUNDTRIP("-1.7976931348623157e+308");
+}
+
+static void TestStringifyString() {
+    TEST_ROUNDTRIP("\"\"");
+    TEST_ROUNDTRIP("\"Hello\"");
+    TEST_ROUNDTRIP("\"Hello\\nWorld\"");
+    TEST_ROUNDTRIP("\"\\\" \\\\ / \\b \\f \\n \\r \\t\"");
+    TEST_ROUNDTRIP("\"Hello\\u0000World\"");
+}
+
+static void TestStringifyArray() {
+    TEST_ROUNDTRIP("[]");
+    TEST_ROUNDTRIP("[null,false,true,123,\"abc\",[1,2,3]]");
+}
+
+static void TestStringifyObject() {
+    TEST_ROUNDTRIP("{}");
+    TEST_ROUNDTRIP("{\"n\":null,\"f\":false,\"t\":true,\"i\":123,\"s\":\"abc\",\"a\":[1,2,3],\"o\":{\"1\":1,\"2\":2,\"3\":3}}");
+}
+
 static void TestParse() {
     TestParseOk();
     TestParseNumber();
@@ -331,6 +441,7 @@ static void TestParse() {
     TestParseMissKey();
     TestParseMissColon();
     TestParseMissCommaOrCurlyBracket();
+    TestParseObject();
 }
 
 static void TestAccess() {
@@ -340,9 +451,20 @@ static void TestAccess() {
     TestAccessNull();
 }
 
+static void TestStringify() {
+    TEST_ROUNDTRIP("null");
+    TEST_ROUNDTRIP("false");
+    TEST_ROUNDTRIP("true");
+    TestStringifyNumber();
+    TestStringifyString();
+    TestStringifyArray();
+    TestStringifyObject();
+}
+
 int main() {
     TestParse();
     TestAccess();
+    TestStringify();
     printf("%d/%d (%3.2f%%) passed!\n", testPass, testCount, 100.0 * testPass / testCount);
     return mainRet;
 }
