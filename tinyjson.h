@@ -30,6 +30,7 @@ struct TinyValue {
         struct {
             TinyMember* object;
             size_t osize;
+            size_t ocapacity;
         };
         struct {
             char *str;
@@ -117,16 +118,21 @@ void TinyClearArray(TinyValue* value);
 
 // object
 size_t TinyGetObjectSize(const TinyValue* value);
+size_t TinyGetObjectCapacity(const TinyValue* value);
 const char* TinyGetObjectKey(const TinyValue* value, size_t index);
 size_t TinyGetObjectKeyLength(const TinyValue* value, size_t index);
 TinyValue* TinyGetObjectValue(const TinyValue* value, size_t index);
 
-
-void TinySetObjectKeyValue(TinyValue* value, const char* key, TinyValue* kValue);
-void TinySetObjectValue(TinyValue* value, const char* key, size_t klen, const TinyValue* kValue);
+void TinySetObject(TinyValue* value, size_t capacity);
+TinyValue* TinySetObjectValue(TinyValue* value, const char* key, size_t klen);
 
 size_t TinyFindObjectIndex(const TinyValue* value, const char* key, size_t klen);
 TinyValue* TinyFindObjectValue(const TinyValue* value, const char* key, size_t klen);
+
+void TinyReserveObject(TinyValue* value, size_t capacity);
+void TinyShrinkObject(TinyValue* value);
+void TinyClearObject(TinyValue* value);
+void TinyRemoveObjectValue(TinyValue* value, size_t index);
 
 bool TinyIsEqual(const TinyValue* lhs, const TinyValue* rhs);
 void TinyCopy(TinyValue* dst, const  TinyValue* src);
