@@ -136,5 +136,7 @@ void TinyRemoveObjectValue(TinyValue* value, size_t index);
 
 bool TinyIsEqual(const TinyValue* lhs, const TinyValue* rhs);
 void TinyCopy(TinyValue* dst, const  TinyValue* src);
+void TinyMove(TinyValue* dst, TinyValue* src);
+void TinySwap(TinyValue* lhs, TinyValue* rhs);
 
 #endif // TINYJSON_H

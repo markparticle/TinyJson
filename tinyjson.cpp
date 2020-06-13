@@ -685,27 +685,25 @@ TinyValue* TinyGetArrayElement(const TinyValue* value, size_t index) {
 TinyValue* TinyInsertArrayElement(TinyValue* value, size_t index) {
     assert(value != NULL && value->type == TINY_ARRAY && index < value->size);
     if(value->size + 1 > value->capacity) {
-       TinyPushBackArrayElement(value);
+        TinyPushBackArrayElement(value);      
     } else {
         value->size++;
     }
     for(size_t i = value->size - 1; i > index; i--) {
-        value->array[i - 1] = value->array[i];
+        value->array[i] = value->array[i - 1];
     }
     return &value->array[index];
 }
 
 void TinyEraseArrayElement(TinyValue* value, size_t index, size_t count) {
     size_t i;
-
     assert(value != NULL && value->type == TINY_ARRAY);
-    assert(count > 0 && count + index <= value->size );
+    assert(count >= 0 && count + index <= value->size );
 
-    for(i = index; i < count + index && i + count < value->size; i++) {
+    for(i = index; i + count < value->size; i++) {
         value->array[i] = value->array[i + count];
-        TinyFree(&value->array[i + count]);
     }
-    for(; i < count + index; i++) {
+    for(; i < value->size; i++) {
         TinyFree(&value->array[i]);
     }
     value->size -= count;
@@ -859,7 +857,7 @@ bool TinyIsEqual(const TinyValue* lhs, const TinyValue* rhs) {
 
 void TinyCopy(TinyValue* dst, const TinyValue* src) {
     assert(src != NULL && dst != NULL && src != dst);
-    TinyFree(dst);
+    TinyInitValue(dst);
     switch (src->type)
     {
     case TINY_STRING:
@@ -867,19 +865,27 @@ void TinyCopy(TinyValue* dst, const TinyValue* src) {
         break;
     case TINY_ARRAY:
         TinySetArray(dst, src->size);
-        for(size_t i = 0; i < dst->size; i++) {
+        dst->size = src->size;
+        for(size_t i = 0; i < src->size; i++) {
             TinyCopy(&dst->array[i], &src->array[i]);
         }
+        dst->type = src->type;
         break;
     case TINY_OBJECT:
         TinySetObject(dst, src->osize);
-        for(size_t i = 0; i < dst->size; i++) {
-            memcpy(dst->object[i].key, src->object[i].key, src->object[i].kLen);
-            TinyCopy(&dst->object[i].value, &src->object[i].value);
+        dst->osize = src->osize;
+        for(size_t i = 0; i < src->osize; i++) {
+            TinyMember &m = dst->object[i];
+            m.kLen = src->object[i].kLen;
+            m.key = (char*)malloc(m.kLen + 1);
+            memcpy(dst->object[i].key, src->object[i].key, m.kLen);
+            TinyCopy(&m.value, &src->object[i].value);      
         }
+        dst->type = src->type;
         break;
     default:
         memcpy(dst, src, sizeof(TinyValue));
+        dst->type = src->type;
         break;
     }
 }
