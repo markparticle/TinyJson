@@ -82,6 +82,18 @@ static int mainRet = 0;
         free(json2);\
     } while(0)
 
+#define TEST_EQUAL(json1, json2, equality) \
+    do {\
+        TinyValue v1, v2;\
+        TinyInitValue(&v1);\
+        TinyInitValue(&v2);\
+        EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&v1, json1));\
+        EXPECT_EQ_INT(TINY_PARSE_OK, TinyParse(&v2, json2));\
+        EXPECT_EQ_INT(equality, TinyIsEqual(&v1, &v2));\
+        TinyFree(&v1);\
+        TinyFree(&v2);\
+    } while(0)
+
 static void TestParseOk() {
     TEST_PARSE(TINY_PARSE_OK, TINY_NULL, "null");
     TEST_PARSE(TINY_PARSE_OK, TINY_FALSE, "false");
@@ -106,6 +118,9 @@ static void TestParseInvalidValue() {
     TEST_PARSE_ERROR(TINY_PARSE_INVALID_VALUE, "inf");
     TEST_PARSE_ERROR(TINY_PARSE_INVALID_VALUE, "NAN");
     TEST_PARSE_ERROR(TINY_PARSE_INVALID_VALUE, "nan");
+
+    TEST_PARSE_ERROR(TINY_PARSE_INVALID_VALUE, "[1,]");
+    TEST_PARSE_ERROR(TINY_PARSE_INVALID_VALUE, "[\"a\", nul]");
 }
 
 static void TestParseExceptValue() {
@@ -206,6 +221,8 @@ static void TestParseInvalidUnicodeHex() {
     TEST_PARSE_ERROR(TINY_PARSE_INVALID_UNICODE_HEX, "\"\\u00G0\"");
     TEST_PARSE_ERROR(TINY_PARSE_INVALID_UNICODE_HEX, "\"\\u000/\"");
     TEST_PARSE_ERROR(TINY_PARSE_INVALID_UNICODE_HEX, "\"\\u000G\"");
+    TEST_PARSE_ERROR(TINY_PARSE_INVALID_UNICODE_HEX, "\"\\u000/\"");
+    TEST_PARSE_ERROR(TINY_PARSE_INVALID_UNICODE_HEX, "\"\\u 123\"");
 }
 
 static void TestParseInvalidUnicodeSurrodate() {
@@ -374,6 +391,85 @@ static void TestAccessString() {
     TinyFree(&value);
 }
 
+static void TestAccessArray() {
+    TinyValue a, e;
+    TinyInitValue(&a);
+    for(size_t j = 0; j <= 5; j += 5) {
+        TinySetArray(&a, j);
+        EXPECT_EQ_SIZE_T(0, TinyGetArraySize(&a));
+        EXPECT_EQ_SIZE_T(j, TinyGetArrayCapacity(&a));
+        for(size_t i = 0; i < 10; i++) {
+            TinyInitValue(&e);
+            TinySetNumber(&e, i);
+            TinyMove(TinyPushBackArrayElement(&a), &e);
+            TinyFree(&e);
+        }
+    }
+    EXPECT_EQ_SIZE_T(10, TinyGetArraySize(&a));
+    for(size_t i = 0; i < 10; i++) {
+        EXPECT_EQ_DOUBLE((double)i, TinyGetNumber(TinyGetArrayElement(&a, i)));
+    }
+
+    TinyPopBackArrayElement(&a);
+    EXPECT_EQ_SIZE_T(9, TinyGetArraySize(&a));
+    for(size_t i = 0; i < 9; i++) {
+        EXPECT_EQ_DOUBLE((double)i, TinyGetNumber(TinyGetArrayElement(&a, i)));
+    }
+
+    TinyEraseArrayElement(&a, 4, 0);
+    EXPECT_EQ_SIZE_T(9, TinyGetArraySize(&a));
+    for(size_t i = 0; i < 9; i++) {
+        EXPECT_EQ_DOUBLE((double)i, TinyGetNumber(TinyGetArrayElement(&a, i)));
+    }
+
+    TinyEraseArrayElement(&a, 8, 1);
+    EXPECT_EQ_SIZE_T(8, TinyGetArraySize(&a));
+    for(size_t i = 0; i < 8; i++) {
+        EXPECT_EQ_DOUBLE((double)i, TinyGetNumber(TinyGetArrayElement(&a, i)));
+    }
+
+    TinyEraseArrayElement(&a, 0, 2);
+    EXPECT_EQ_SIZE_T(6, TinyGetArraySize(&a));
+    for(size_t i = 0; i < 6; i++) {
+        EXPECT_EQ_DOUBLE((double)i + 2, TinyGetNumber(TinyGetArrayElement(&a, i)));
+    }
+
+    for(size_t i = 0; i < 2; i++) {
+        TinyInitValue(&e);
+        TinySetNumber(&e, i);
+        TinyMove(TinyInsertArrayElement(&a, i), &e);
+        TinyFree(&e);
+    }
+    EXPECT_EQ_SIZE_T(8, TinyGetArraySize(&a));
+    for(size_t i = 0; i < 8; i++) {
+        EXPECT_EQ_DOUBLE((double)i, TinyGetNumber(TinyGetArrayElement(&a, i)));
+    }
+
+    EXPECT_EQ_TRUE(TinyGetArrayCapacity(&a) > 8);
+    TinyShrinkArray(&a);
+    EXPECT_EQ_TRUE(TinyGetArrayCapacity(&a) == 8);
+    EXPECT_EQ_TRUE(TinyGetArraySize(&a) == 8);
+    for(size_t i = 0; i < 8; i++) {
+        EXPECT_EQ_DOUBLE((double)i, TinyGetNumber(TinyGetArrayElement(&a, i)));
+    }
+
+    TinySetString(&e, "Hello", 5);
+    TinyMove(TinyPushBackArrayElement(&a), &e);   /* Test if element is freed */
+
+    size_t i = TinyGetArrayCapacity(&a);
+    TinyClearArray(&a);
+    EXPECT_EQ_SIZE_T(0, TinyGetArraySize(&a));
+    EXPECT_EQ_SIZE_T(i, TinyGetArrayCapacity(&a));
+    TinyShrinkArray(&a);
+    EXPECT_EQ_SIZE_T(0, TinyGetArrayCapacity(&a));
+
+    TinyFree(&a);
+}
+
+static void TestAccessObject() {
+    //todo
+}
+
 static void TestStringifyNumber() {
     TEST_ROUNDTRIP("0");
     TEST_ROUNDTRIP("-0");
@@ -447,6 +543,8 @@ static void TestAccess() {
     TestAccessNumber();
     TestAccessBool();
     TestAccessNull();
+    TestAccessArray();
+    TestAccessObject();
 }
 
 static void TestStringify() {
@@ -459,10 +557,80 @@ static void TestStringify() {
     TestStringifyObject();
 }
 
+static void TestEqual() {
+    TEST_EQUAL("true", "true", 1);
+    TEST_EQUAL("true", "false", 0);
+    TEST_EQUAL("false", "false", 1);
+    TEST_EQUAL("null", "null", 1);
+    TEST_EQUAL("null", "0", 0);
+    TEST_EQUAL("123", "123", 1);
+    TEST_EQUAL("123", "456", 0);
+    TEST_EQUAL("\"abc\"", "\"abc\"", 1);
+    TEST_EQUAL("\"abc\"", "\"abcd\"", 0);
+    TEST_EQUAL("[]", "[]", 1);
+    TEST_EQUAL("[]", "null", 0);
+    TEST_EQUAL("[1,2,3]", "[1,2,3]", 1);
+    TEST_EQUAL("[1,2,3]", "[1,2,3,4]", 0);
+    TEST_EQUAL("[1, 2, true, null, \"hello\"]", "[1, 2, true, null, \"hello\"]", 1);
+    TEST_EQUAL("[[]]", "[[]]", 1);
+    TEST_EQUAL("{}", "{}", 1);
+    TEST_EQUAL("{}", "null", 0);
+    TEST_EQUAL("{}", "[]", 0);
+    TEST_EQUAL("{\"a\":1,\"b\":2}", "{\"a\":1,\"b\":2}", 1);
+    TEST_EQUAL("{\"a\":1,\"b\":2}", "{\"b\":2,\"a\":1}", 1);
+    TEST_EQUAL("{\"a\":1,\"b\":2}", "{\"a\":1,\"b\":3}", 0);
+    TEST_EQUAL("{\"a\":1,\"b\":2}", "{\"a\":1,\"b\":2,\"c\":3}", 0);
+    TEST_EQUAL("{\"a\":{\"b\":{\"c\":{}}}}", "{\"a\":{\"b\":{\"c\":{}}}}", 1);
+    TEST_EQUAL("{\"a\":{\"b\":{\"c\":{}}}}", "{\"a\":{\"b\":{\"c\":[]}}}", 0);
+}
+
+static void TestCopy() {
+    TinyValue v1, v2;
+    TinyInitValue(&v1);
+    TinyParse(&v1, "{\"t\":true,\"f\":false,\"n\":null,\"d\":1.5,\"a\":[1,2,3]}");
+    TinyInitValue(&v2);
+    TinyCopy(&v2, &v1);
+    EXPECT_EQ_TRUE(TinyIsEqual(&v1, &v2));
+    TinyFree(&v1);
+    TinyFree(&v2);
+}
+
+static void TestMove() {
+    TinyValue v1, v2, v3;
+    TinyInitValue(&v1);
+    TinyInitValue(&v2);
+    TinyInitValue(&v3);
+    TinyParse(&v1, "{\"t\":true,\"f\":false,\"n\":null,\"d\":1.5,\"a\":[1,2,3]}");
+    TinyCopy(&v2, &v1);
+    TinyMove(&v3, &v2);
+    EXPECT_EQ_INT(TINY_NULL, TinyGetType(&v2));
+    EXPECT_EQ_TRUE(TinyIsEqual(&v3, &v1));
+    TinyFree(&v1);
+    TinyFree(&v2);
+    TinyFree(&v3);
+}
+
+static void TestSwap() {
+    TinyValue v1, v2;
+    TinyInitValue(&v1);
+    TinyInitValue(&v2);
+    TinySetString(&v1, "Hello", 5);
+    TinySetString(&v2, "world!", 6);
+    TinySwap(&v2, &v1);
+    EXPECT_EQ_STRING("world!", TinyGetString(&v1), TinyGetStringLength(&v1));
+    EXPECT_EQ_STRING("Hello", TinyGetString(&v2), TinyGetStringLength(&v2));
+    TinyFree(&v1);
+    TinyFree(&v2);
+}
+
 int main() {
     TestParse();
     TestAccess();
     TestStringify();
+    TestEqual();
+    TestCopy();
+    TestMove();
+    TestSwap();
     printf("%d/%d (%3.2f%%) passed!\n", testPass, testCount, 100.0 * testPass / testCount);
     return mainRet;
 }
