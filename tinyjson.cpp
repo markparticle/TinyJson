@@ -330,8 +330,8 @@ static int TinyParseObject(TinyContext* context, TinyValue* value) {
     if(*context->json == '}') {
         context->json++;
         value->type = TINY_OBJECT;
-        value->member = 0;
-        value->msize = 0;
+        value->object = 0;
+        value->osize = 0;
         return TINY_PARSE_OK;
     }
 
@@ -382,10 +382,10 @@ static int TinyParseObject(TinyContext* context, TinyValue* value) {
         else if (*context->json == '}') {
             context->json++;
             value->type = TINY_OBJECT;
-            value->msize = size;
+            value->osize = size;
             size_t s = sizeof(TinyMember) * size;
-            value->member = (TinyMember*)malloc(s);
-            memcpy(value->member, TinyContextPop(context, s), s);
+            value->object = (TinyMember*)malloc(s);
+            memcpy(value->object, TinyContextPop(context, s), s);
             return TINY_PARSE_OK;
         } else {
             ret = TINY_PARSE_MISS_COMMA_OR_CURLY_BRACKET;
@@ -414,32 +414,6 @@ static int TinyParseValue(TinyContext* context, TinyValue* value) {
         case '{': return TinyParseObject(context, value);
         case '\0': return TINY_PARSE_EXPECT_VALUE;
     }
-}
-
-int TinyParse(TinyValue *value, const char* json) {
-    assert(value != NULL);
-    TinyContext context;
-    int ret;
-
-    TinyInitValue(value);
-    //初始化context
-    context.json = json;
-    context.stack = NULL;
-    context.size = context.top = 0;
-
-    TinyParseWhiteSpace(&context);
-    ret = TinyParseValue(&context, value);
-
-    if(ret == TINY_PARSE_OK) {
-        TinyParseWhiteSpace(&context);
-        if(*context.json != '\0') {
-            value->type = TINY_NULL;
-            ret = TINY_PARSE_ROOT_NOT_SINGULAR;
-        }
-    }
-    assert(context.top == 0);
-    free(context.stack);
-    return ret;
 }
 
 static void TinyStringifyString(TinyContext* context, const char *str, size_t len) {
@@ -510,11 +484,11 @@ static void TinyStringifyValue(TinyContext* context, const TinyValue* value) {
     case TINY_OBJECT:
         {
             TinyPutC(context, '{');
-            for(size_t i = 0; i < value->msize; i++) {
+            for(size_t i = 0; i < value->osize; i++) {
                 if(i > 0) TinyPutC(context, ',');
-                TinyStringifyString(context, value->member[i].key, value->member[i].kLen);
+                TinyStringifyString(context, value->object[i].key, value->object[i].kLen);
                 TinyPutC(context, ':');
-                TinyStringifyValue(context, &value->member[i].value);
+                TinyStringifyValue(context, &value->object[i].value);
             }
             TinyPutC(context, '}');
         }
@@ -523,6 +497,67 @@ static void TinyStringifyValue(TinyContext* context, const TinyValue* value) {
         assert(0 && "invalid type");
         break;
     }
+}
+
+int TinyParse(TinyValue *value, const char* json) {
+    assert(value != NULL);
+    TinyContext context;
+    int ret;
+
+    TinyInitValue(value);
+    //初始化context
+    context.json = json;
+    context.stack = NULL;
+    context.size = context.top = 0;
+
+    TinyParseWhiteSpace(&context);
+    ret = TinyParseValue(&context, value);
+
+    if(ret == TINY_PARSE_OK) {
+        TinyParseWhiteSpace(&context);
+        if(*context.json != '\0') {
+            value->type = TINY_NULL;
+            ret = TINY_PARSE_ROOT_NOT_SINGULAR;
+        }
+    }
+    assert(context.top == 0);
+    free(context.stack);
+    return ret;
+}
+
+void TinyInitValue(TinyValue *value) {
+    value->type = TINY_NULL;
+}
+
+void TinyFree(TinyValue *value) {
+    assert(value != NULL);
+    switch (value->type)
+    {
+    case TINY_STRING:
+        free(value->str);
+        value->len = 0;
+        break;
+    case TINY_ARRAY:
+        //释放元素
+        for(size_t i = 0; i < value->size; i++) {
+            TinyFree(&value->array[i]);
+        }
+        //释放数组
+        free(value->array);
+        value->size = 0;
+        break;
+    case TINY_OBJECT:
+        for(size_t i = 0; i < value->osize; i++){
+            free(value->object[i].key);
+            TinyFree(&value->object[i].value);
+        }
+        free(value->object);
+        value->osize = 0;
+        break;
+    default:
+        break;
+    }
+    value->type = TINY_NULL;
 }
 
 char* TinyStringify(const TinyValue* value, size_t* len) {
@@ -590,36 +625,22 @@ void TinySetString(TinyValue *value, const char* str, size_t len) {
     value->type = TINY_STRING;
 }
 
-void TinyInitValue(TinyValue *value) {
-    value->type = TINY_NULL;
+void TinySetArray(TinyValue* value, size_t capacity) {
+    assert(value != NULL);
+    TinyFree(value);
+    value->type = TINY_ARRAY;
+    value->size = 0;
+    value->capacity = capacity;
+    if(capacity > 0) {
+        value->array = (TinyValue*)malloc(capacity * sizeof(TinyValue));
+    } else {
+        value->array = NULL;
+    }
 }
 
-void TinyFree(TinyValue *value) {
-    assert(value != NULL);
-    switch (value->type)
-    {
-    case TINY_STRING:
-        free(value->str);
-        break;
-    case TINY_ARRAY:
-        //释放元素
-        for(size_t i = 0; i < value->size; i++) {
-            TinyFree(&value->array[i]);
-        }
-        //释放数组
-        free(value->array);
-        break;
-    case TINY_OBJECT:
-        for(size_t i = 0; i < value->msize; i++){
-            free(value->member[i].key);
-            TinyFree(&value->member[i].value);
-        }
-        free(value->member);
-        break;
-    default:
-        break;
-    }
-    value->type = TINY_NULL;
+size_t TinyGetArrayCapacity(TinyValue* value) {
+    assert(value != NULL && value->type == TINY_ARRAY);
+    return value->capacity;
 }
 
 size_t TinyGetArraySize(const TinyValue* value) {
@@ -627,31 +648,189 @@ size_t TinyGetArraySize(const TinyValue* value) {
     return value->size;
 }
 
-TinyValue* TinyGetArrayElement(const TinyValue* value, size_t index) {
+void TinyReserveArray(TinyValue* value, size_t capacity) {
     assert(value != NULL && value->type == TINY_ARRAY);
-    assert(index < value->size);
+    if(value->capacity < capacity) {
+        value->capacity = capacity;
+        value->array = (TinyValue*) realloc(value->array, capacity * sizeof(TinyValue));
+    }
+}
+
+void TinyShrinkArray(TinyValue* value) {
+    assert(value != NULL && value->type == TINY_ARRAY);
+    if(value->capacity > value->size) {
+        value->capacity = value->size;
+        value->array = (TinyValue*) realloc(value->array, value->capacity * sizeof(TinyValue));
+    }
+}
+
+TinyValue* TinyPushBackArrayElement(TinyValue *value) {
+    assert(value != NULL && value->type == TINY_ARRAY);
+    if(value->size == value->capacity) {
+        if(value->capacity == 0) {
+             TinyReserveArray(value, 0);
+        } else {
+            TinyReserveArray(value, value->capacity * 2);
+        }
+    }
+    TinyInitValue(&value->array[value->size]);
+    return &value->array[value->size++];
+} 
+
+void TinyPopBackArrayElement(TinyValue* value) {
+    assert(value != NULL && value->type == TINY_ARRAY && value->size > 0);
+    TinyFree(&value->array[--value->size]);
+}
+
+TinyValue* TinyGetArrayElement(const TinyValue* value, size_t index) {
+    assert(value != NULL && value->type == TINY_ARRAY && index < value->size);
     return &value->array[index];
+}
+
+TinyValue* TinyInsertArrayElement(TinyValue* value, size_t index) {
+    assert(value != NULL && value->type == TINY_ARRAY && index < value->size);
+    if(value->size + 1 > value->capacity) {
+       TinyPushBackArrayElement(value);
+    } else {
+        value->size++;
+    }
+    for(size_t i = value->size - 1; i > index; i--) {
+        value->array[i - 1] = value->array[i];
+    }
+    return &value->array[index];
+}
+
+void TinyEraseArrayElement(TinyValue* value, size_t index, size_t count) {
+    size_t i;
+
+    assert(value != NULL && value->type == TINY_ARRAY);
+    assert(count > 0 && count + index <= value->size );
+
+    for(i = index; i < count + index && i + count < value->size; i++) {
+        value->array[i] = value->array[i + count];
+        TinyFree(&value->array[i + count]);
+    }
+    for(; i < count + index; i++) {
+        TinyFree(&value->array[i]);
+    }
+    value->size -= count;
+}
+
+void TinyClearArray(TinyValue* value) {
+    assert(value != NULL && value->type == TINY_ARRAY);
+    TinyFree(value->array);
 }
 
 size_t TinyGetObjectSize(const TinyValue* value) {
     assert(value != NULL && value->type == TINY_OBJECT);
-    return value->msize;
+    return value->osize;
 }
 
 const char* TinyGetObjectKey(const TinyValue* value, size_t index) {
     assert(value != NULL && value->type == TINY_OBJECT);
-    assert(index < value->msize);
-    return value->member[index].key;
+    assert(index < value->osize);
+    return value->object[index].key;
 }
 
 size_t TinyGetObjectKeyLength(const TinyValue* value, size_t index) {
     assert(value != NULL && value->type == TINY_OBJECT);
-    assert(index < value->msize);
-    return value->member[index].kLen;
+    assert(index < value->osize);
+    return value->object[index].kLen;
 }
 
 TinyValue* TinyGetObjectValue(const TinyValue* value, size_t index) {
     assert(value != NULL && value->type == TINY_OBJECT);
-    assert(index < value->msize);
-    return &value->member[index].value;
+    assert(index < value->osize);
+    return &value->object[index].value;
+}
+
+size_t TinyFindObjectIndex(const TinyValue* value, const char* key, size_t klen) {
+    assert(value != NULL && value->type == TINY_OBJECT && key != NULL);
+    for(size_t i = 0; i < value->osize; i++) {
+        if(value->object[i].kLen == klen && memcmp(value->object[i].key, key, klen) == 0) {
+            return i;
+        }
+    }
+    return TINY_KEY_NOT_EXIST;
+}
+
+TinyValue* TinyFindObjectValue(const TinyValue* value, const char* key, size_t klen) {
+    size_t index = TinyFindObjectIndex(value, key, klen);
+    if(index == TINY_KEY_NOT_EXIST) return NULL;
+    return &value->object[index].value;
+}
+
+void TinySetObjectKeyValue(TinyValue* value, const char* key, TinyValue* kValue) {
+    assert(value != NULL && key != NULL && kValue != NULL);
+    TinyFree(value);
+}
+
+void TinySetObjectValue(TinyValue* value, const char* key, size_t klen, const TinyValue* kValue) {
+    assert(value != NULL && key != NULL && klen > 0 && kValue != NULL);
+    TinyFree(value);
+}
+
+bool TinyIsEqual(const TinyValue* lhs, const TinyValue* rhs) {
+    assert(lhs != NULL && rhs != NULL);
+    if(lhs->type != rhs->type) return false;
+    switch(lhs->type) {
+        case TINY_STRING:
+            return (lhs->len == rhs->len && memcmp(lhs->str, rhs->str, lhs->len) == 0);
+        case TINY_NUMBER:
+            return lhs->num == rhs->num;
+        case TINY_ARRAY:
+            if(lhs->size != rhs->size) return false;
+            for(size_t i = 0; i < lhs->size; i++) {
+                if(TinyIsEqual(&lhs->array[i], &rhs->array[i]) == false) {
+                    return false;
+                }
+            }
+            return true;
+        case TINY_OBJECT:
+            if(lhs->osize != rhs->osize) return false;
+            for(size_t i = 0; i < lhs->osize; i++) {
+                TinyValue* t = TinyFindObjectValue(rhs, lhs->object[i].key, lhs->object[i].kLen);
+                if(t == NULL || TinyIsEqual(t, &lhs->object[i].value) == false) return false;         
+            }
+            return true;
+        default:
+            return true;
+    }
+}
+
+void TinyCopy(TinyValue* dst, const TinyValue* src) {
+    assert(src != NULL && dst != NULL && src != dst);
+    switch (src->type)
+    {
+    case TINY_STRING:
+        TinySetString(dst, src->str, src->len);
+        break;
+    case TINY_ARRAY:
+
+        break;
+    case TINY_OBJECT:
+
+        break;
+    default:
+        TinyFree(dst);
+        memcpy(dst, src, sizeof(TinyValue));
+        break;
+    }
+}
+
+void TinyMove(TinyValue* dst, TinyValue* src) {
+    assert(dst != NULL && src != NULL && src != dst);
+    TinyFree(dst);
+    memcpy(dst, src, sizeof(TinyValue));
+    TinyInitValue(src);
+}
+
+void TinySwap(TinyValue* lhs, TinyValue* rhs) {
+    assert(lhs != NULL && rhs != NULL);
+    if(lhs != rhs) {
+        TinyValue tmp;
+        memcpy(&tmp, lhs, sizeof(TinyValue));
+        memcpy(lhs, rhs, sizeof(TinyValue));
+        memcpy(rhs, &tmp, sizeof(TinyValue));
+    }
 }

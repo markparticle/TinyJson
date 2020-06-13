@@ -10,6 +10,7 @@
 #include <stddef.h> /* size_t */
 
 const size_t TINY_STACK_SIZE = 256;
+const size_t TINY_KEY_NOT_EXIST = -1;
 
 typedef struct TinyValue TinyValue; 
 typedef struct TinyMember TinyMember; 
@@ -27,8 +28,8 @@ enum TinyType {
 struct TinyValue {
     union {
         struct {
-            TinyMember* member;
-            size_t msize;
+            TinyMember* object;
+            size_t osize;
         };
         struct {
             char *str;
@@ -37,6 +38,7 @@ struct TinyValue {
         struct {
             TinyValue* array;
             size_t size;
+            size_t capacity;
         };
         double num;
     };
@@ -92,17 +94,41 @@ double TinyGetNumber(const TinyValue* value);
 const char* TinyGetString(const TinyValue* value);
 size_t TinyGetStringLength(const TinyValue* value);
 
+void TinySetNull(TinyValue* value);
+void TinySetBoolen(TinyValue* value, bool flag);
+void TinySetNumber(TinyValue* value, double num);
+void TinySetString(TinyValue* value, const char* str, size_t len);
+
+// array
 size_t TinyGetArraySize(const TinyValue* value);
 TinyValue* TinyGetArrayElement(const TinyValue* value, size_t index);
 
+void TinySetArray(TinyValue* value, size_t capacity);
+size_t TinyGetArrayCapacity(TinyValue* value);
+size_t TinyGetArraySize(const TinyValue* value);
+
+void TinyReserveArray(TinyValue* value, size_t capacity);
+void TinyShrinkArray(TinyValue* value);
+TinyValue* TinyPushBackArrayElement(TinyValue *value);
+void TinyPopBackArrayElement(TinyValue* value);
+TinyValue* TinyInsertArrayElement(TinyValue* value, size_t index);
+void TinyEraseArrayElement(TinyValue* value, size_t index, size_t count);
+void TinyClearArray(TinyValue* value);
+
+// object
 size_t TinyGetObjectSize(const TinyValue* value);
 const char* TinyGetObjectKey(const TinyValue* value, size_t index);
 size_t TinyGetObjectKeyLength(const TinyValue* value, size_t index);
 TinyValue* TinyGetObjectValue(const TinyValue* value, size_t index);
 
-void TinySetNull(TinyValue* value);
-void TinySetBoolen(TinyValue* value, bool flag);
-void TinySetNumber(TinyValue* value, double num);
-void TinySetString(TinyValue* value, const char* str, size_t len);
+
+void TinySetObjectKeyValue(TinyValue* value, const char* key, TinyValue* kValue);
+void TinySetObjectValue(TinyValue* value, const char* key, size_t klen, const TinyValue* kValue);
+
+size_t TinyFindObjectIndex(const TinyValue* value, const char* key, size_t klen);
+TinyValue* TinyFindObjectValue(const TinyValue* value, const char* key, size_t klen);
+
+bool TinyIsEqual(const TinyValue* lhs, const TinyValue* rhs);
+void TinyCopy(TinyValue* dst, const  TinyValue* src);
 
 #endif // TINYJSON_H
