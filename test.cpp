@@ -31,9 +31,9 @@ static int mainRet = 0;
     EXPECT_EQ_BASE(sizeof(expect) - 1 == aLength && \
     memcmp(expect, actual, aLength) == 0, expect, actual, "%s")
 
-#define EXPECT_EQ_TRUE(actual) EXPECT_EQ_BASE(((actual) == true), "true", "false", "%s");
+#define EXPECT_TRUE(actual) EXPECT_EQ_BASE(((actual) == true), "true", "false", "%s");
 
-#define EXPECT_EQ_FALSE(actual) EXPECT_EQ_BASE(((actual) == false), "false", "true", "%s");
+#define EXPECT_FALSE(actual) EXPECT_EQ_BASE(((actual) == false), "false", "true", "%s");
 
 #define EXPECT_EQ_SIZE_T(expect, actual) EXPECT_EQ_BASE((expect) == (actual), (size_t)expect, (size_t)actual, "%zu");
 
@@ -313,7 +313,7 @@ static void TestParseObject() {
         EXPECT_EQ_INT(TINY_OBJECT, TinyGetType(o));
         for (size_t i = 0; i < 3; i++) {
             TinyValue* ov = TinyGetObjectValue(o, i);
-            EXPECT_EQ_TRUE('1' + i == TinyGetObjectKey(o, i)[0]);
+            EXPECT_TRUE(('1' + (int)i) == TinyGetObjectKey(o, i)[0]);
             EXPECT_EQ_SIZE_T(1, TinyGetObjectKeyLength(o, i));
             EXPECT_EQ_INT(TINY_NUMBER, TinyGetType(ov));
             EXPECT_EQ_DOUBLE(i + 1.0, TinyGetNumber(ov));
@@ -357,10 +357,10 @@ static void TestAccessBool() {
     TinyValue value;
     TinyInitValue(&value);
     TinySetBoolen(&value, 0);
-    EXPECT_EQ_FALSE(TinyGetBoolean(&value));
+    EXPECT_FALSE(TinyGetBoolean(&value));
 
     TinySetBoolen(&value, true);
-    EXPECT_EQ_TRUE(TinyGetBoolean(&value));
+    EXPECT_TRUE(TinyGetBoolean(&value));
     TinyFree(&value);
 }
 
@@ -445,10 +445,10 @@ static void TestAccessArray() {
         EXPECT_EQ_DOUBLE((double)i, TinyGetNumber(TinyGetArrayElement(&a, i)));
     }
 
-    EXPECT_EQ_TRUE(TinyGetArrayCapacity(&a) > 8);
+    EXPECT_TRUE(TinyGetArrayCapacity(&a) > 8);
     TinyShrinkArray(&a);
-    EXPECT_EQ_TRUE(TinyGetArrayCapacity(&a) == 8);
-    EXPECT_EQ_TRUE(TinyGetArraySize(&a) == 8);
+    EXPECT_TRUE(TinyGetArrayCapacity(&a) == 8);
+    EXPECT_TRUE(TinyGetArraySize(&a) == 8);
     for(size_t i = 0; i < 8; i++) {
         EXPECT_EQ_DOUBLE((double)i, TinyGetNumber(TinyGetArrayElement(&a, i)));
     }
@@ -467,7 +467,71 @@ static void TestAccessArray() {
 }
 
 static void TestAccessObject() {
-    //todo
+    TinyValue o, v, *pv;
+    size_t i, j, index;
+
+    TinyInitValue(&o);
+    for(j = 0; j <= 5; j += 5) {
+        TinySetObject(&o, j);
+        EXPECT_EQ_SIZE_T(0, TinyGetObjectSize(&o));
+        EXPECT_EQ_SIZE_T(j, TinyGetObjectCapacity(&o));
+        for(i = 0; i < 10; i++) {
+            char key[] = "a";
+            key[0] += i;
+            TinyInitValue(&v);
+            TinySetNumber(&v, i);
+            TinyMove(TinySetObjectValue(&o, key, 1), &v);
+            //TinyFree(&v);
+        }
+        EXPECT_EQ_SIZE_T(10, TinyGetObjectSize(&o));
+        for(i = 0; i < 10; i++) {
+            char key[] = "a";
+            key[0] += i;
+            index = TinyFindObjectIndex(&o, key, 1);
+            EXPECT_TRUE(index != TINY_KEY_NOT_EXIST);
+            pv = TinyGetObjectValue(&o, index);
+            EXPECT_EQ_DOUBLE((double)i, TinyGetNumber(pv));
+        }
+    }
+    index = TinyFindObjectIndex(&o, "j", 1);
+    EXPECT_TRUE(index != TINY_KEY_NOT_EXIST);
+    TinyRemoveObjectValue(&o, index);
+    index = TinyFindObjectIndex(&o, "j", 1);
+    EXPECT_TRUE(index == TINY_KEY_NOT_EXIST);
+    EXPECT_EQ_SIZE_T(9, TinyGetObjectSize(&o));
+
+    index = TinyFindObjectIndex(&o, "a", 1);
+    EXPECT_TRUE(index != TINY_KEY_NOT_EXIST);
+    TinyRemoveObjectValue(&o, index);
+    index = TinyFindObjectIndex(&o, "a", 1);
+    EXPECT_TRUE(index == TINY_KEY_NOT_EXIST);
+    EXPECT_EQ_SIZE_T(8, TinyGetObjectSize(&o));
+
+    EXPECT_TRUE(TinyGetObjectCapacity(&o) > 8);
+    TinyShrinkObject(&o);
+    EXPECT_EQ_SIZE_T(8, TinyGetObjectCapacity(&o));
+    EXPECT_EQ_SIZE_T(8, TinyGetObjectSize(&o));
+    for(i = 0; i < 8; i++) {
+        char key[] = "a";
+        key[0] += i + 1;
+        EXPECT_EQ_DOUBLE((double)i + 1, TinyGetNumber(TinyGetObjectValue(&o, TinyFindObjectIndex(&o, key, 1))));
+    }
+
+    TinySetString(&v, "Hello", 5);
+    TinyMove(TinySetObjectValue(&o, "World", 5), &v);
+    //TinyFree(&v);
+    pv = TinyFindObjectValue(&o, "World", 5);
+    EXPECT_TRUE(pv != NULL);
+    EXPECT_EQ_STRING("Hello", TinyGetString(pv), TinyGetStringLength(pv));
+
+    i = TinyGetObjectCapacity(&o);
+    TinyClearObject(&o);
+    EXPECT_EQ_SIZE_T(0, TinyGetObjectSize(&o));
+    EXPECT_EQ_SIZE_T(i, TinyGetObjectCapacity(&o));
+    TinyShrinkObject(&o);
+    EXPECT_EQ_SIZE_T(0, TinyGetObjectCapacity(&o));
+
+    TinyFree(&o);
 }
 
 static void TestStringifyNumber() {
@@ -590,7 +654,7 @@ static void TestCopy() {
     TinyParse(&v1, "{\"t\":true,\"f\":false,\"n\":null,\"d\":1.5,\"a\":[1,2,3]}");
     TinyInitValue(&v2);
     TinyCopy(&v2, &v1);
-    EXPECT_EQ_TRUE(TinyIsEqual(&v1, &v2));
+    EXPECT_TRUE(TinyIsEqual(&v1, &v2));
     TinyFree(&v1);
     TinyFree(&v2);
 }
@@ -604,7 +668,7 @@ static void TestMove() {
     TinyCopy(&v2, &v1);
     TinyMove(&v3, &v2);
     EXPECT_EQ_INT(TINY_NULL, TinyGetType(&v2));
-    EXPECT_EQ_TRUE(TinyIsEqual(&v3, &v1));
+    EXPECT_TRUE(TinyIsEqual(&v3, &v1));
     TinyFree(&v1);
     TinyFree(&v2);
     TinyFree(&v3);
