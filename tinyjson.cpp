@@ -766,11 +766,11 @@ TinyValue* TinySetObjectValue(TinyValue* value, const char* key, size_t klen) {
         }
     }
 
-    TinyMember &m = value->object[value->osize];
+    TinyMember &m = value->object[value->osize++];
     m.kLen = klen;
     m.key = (char*)malloc(klen + 1);
     memcpy(m.key, key, klen);
-    value->osize++;
+    TinyInitValue(&m.value);
     return &m.value;
 }
 
@@ -811,7 +811,7 @@ void TinyShrinkObject(TinyValue* value) {
 void TinyClearObject(TinyValue* value) {
     assert(value != NULL && value->type == TINY_OBJECT);
     for(size_t i = 0; i < value->osize; i++) {
-        free(&value->object[i].key);
+        free(value->object[i].key);
         TinyFree(&value->object[i].value);
     }
     value->size = 0;
@@ -819,8 +819,10 @@ void TinyClearObject(TinyValue* value) {
 
 void TinyRemoveObjectValue(TinyValue* value, size_t index) {
     assert(value != NULL && value->type == TINY_OBJECT && index < value->osize);
-    for(size_t i = index; i + 1 < value->osize; i++) {
-        value->object[i] = value->object[i + 1];
+    for(size_t i = index + 1; i < value->osize; i++) {
+        memcpy(value->object[i - 1].key, value->object[i].key, value->object[i].kLen);
+        value->object[i - 1].value = value->object[i].value;
+        value->object[i - 1].kLen = value->object[i].kLen;
     }
     value->osize--;
     free(value->object[value->osize].key);
