@@ -1,12 +1,12 @@
 /*
  * @Author       : mark
  * @Date         : 2020-05-26
- * @copyleft GPL 2.0
+ * @copyleft Apache 2.0
  */ 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "tinyjson.h"
+#include "../code/tinyjson.h"
 
 static int testCount = 0;
 static int testPass = 0;

@@ -3,7 +3,10 @@
 !*/
 !*.cpp
 !*.h
+!LICENSE
 !makefile
+!Makefile
 
-/source.cpp
-/source.h
+*.o
+*.exe
+/.vscode

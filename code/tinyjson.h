@@ -1,7 +1,7 @@
 /*
  * @Author       : mark
  * @Date         : 2020-05-26
- * @copyleft GPL 2.0
+ * @copyleft Apache 2.0
  */ 
 
 #ifndef TINYJSON_H
